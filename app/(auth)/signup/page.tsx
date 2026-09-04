@@ -7,6 +7,7 @@ import { ShieldCheck, ArrowRight, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+import { signUp } from "@/lib/auth";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -20,17 +21,40 @@ export default function SignupPage() {
   const [role, setRole] = useState("INSPECTOR");
   const [isSuccess, setIsSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      setIsSuccess(true);
-      setTimeout(() => {
-        router.push("/login");
-      }, 1500);
-    }, 600);
+    setError("");
+
+    const { data, error: signUpError } = await signUp({
+      email,
+      password,
+      fullName,
+      badgeNumber,
+      department,
+      jurisdiction,
+      role,
+    });
+    setIsLoading(false);
+
+    if (signUpError) {
+      setError(signUpError.message);
+      return;
+    }
+
+    setIsSuccess(true);
+    if (data.session) {
+      router.push("/dashboard");
+    } else {
+      setTimeout(() => router.push("/login"), 1500);
+    }
   };
 
   return (
@@ -174,6 +198,7 @@ export default function SignupPage() {
                 >
                   Submit Clearance Request
                 </Button>
+                {error && <p className="w-full text-xs text-red-600" role="alert">{error}</p>}
                 <div className="flex items-center justify-center w-full text-[11px] text-[#475569]">
                   <span>Already have officer clearance?</span>
                   <Link href="/login" className="text-[#1D4ED8] font-semibold ml-1 hover:underline">

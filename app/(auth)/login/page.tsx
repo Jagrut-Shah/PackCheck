@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog } from "@/components/ui/dialog";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+import { sendPasswordReset, signIn } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,17 +20,38 @@ export default function LoginPage() {
   const [resetEmail, setResetEmail] = useState("");
   const [resetSubmitted, setResetSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Mock login redirect to dashboard
-    setTimeout(() => {
+    setError("");
+
+    const { error: signInError } = await signIn(email, password);
+    if (signInError) {
+      setError(signInError.message);
+      setIsLoading(false);
+      return;
+    }
+
+    if (rememberMe) {
+      localStorage.setItem("packcheck-remember-email", email);
+    } else {
+      localStorage.removeItem("packcheck-remember-email");
+    }
+    setIsLoading(false);
+    if (typeof window !== "undefined") {
       router.push("/dashboard");
-    }, 400);
+    }
   };
 
-  const handleResetPassword = () => {
+  const handleResetPassword = async () => {
+    if (!resetEmail) return;
+    const { error: resetError } = await sendPasswordReset(resetEmail);
+    if (resetError) {
+      setError(resetError.message);
+      return;
+    }
     setResetSubmitted(true);
     setTimeout(() => {
       setIsForgotModalOpen(false);
@@ -126,6 +148,7 @@ export default function LoginPage() {
               >
                 Access Inspection Portal
               </Button>
+              {error && <p className="w-full text-xs text-red-600" role="alert">{error}</p>}
 
               <div className="flex items-center justify-between w-full text-[11px] text-[#475569]">
                 <span>Need inspector onboarding?</span>
