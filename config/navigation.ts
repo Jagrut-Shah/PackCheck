@@ -4,7 +4,7 @@
  */
 
 import { PermissionAction } from "@/config/permissions";
-import { UserRole } from "@/types/user";
+import { UserRole } from "@/lib/types/user";
 
 export type NavGroup = "INSPECTION" | "MANAGEMENT";
 

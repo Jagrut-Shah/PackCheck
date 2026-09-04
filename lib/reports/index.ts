@@ -5,8 +5,8 @@
  * Critical Principle: PDF is generated programmatically (never by an LLM).
  */
 
-import { InspectionRecord } from "@/types/inspection";
-import { VerificationReportData } from "@/types/report";
+import { InspectionRecord } from "@/lib/types/inspection";
+import { VerificationReportData } from "@/lib/types/report";
 
 export async function generateVerificationReport(
   inspection: InspectionRecord

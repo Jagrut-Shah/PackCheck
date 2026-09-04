@@ -6,7 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ReportSummaryView } from "@/components/reports/report-summary-view";
 import { getReportById } from "@/lib/api/reports";
-import { VerificationReportData } from "@/types/report";
+import { VerificationReportData } from "@/lib/types/report";
 
 interface ReportDetailPageProps {
   params: Promise<{ id: string }>;

@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { InspectionStepper } from "@/components/inspections/inspection-stepper";
 import { getInspectionById, updateInspectionStatus } from "@/lib/api/inspections";
-import { InspectionRecord } from "@/types/inspection";
+import { InspectionRecord } from "@/lib/types/inspection";
 
 interface ProcessingPageProps {
   params: Promise<{ id: string }>;

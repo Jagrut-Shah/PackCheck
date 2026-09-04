@@ -9,7 +9,7 @@ import { InspectionHeader } from "@/components/inspections/inspection-header";
 import { InspectionStepper } from "@/components/inspections/inspection-stepper";
 import { EvidenceViewer } from "@/components/evidence/evidence-viewer";
 import { getInspectionById } from "@/lib/api/inspections";
-import { InspectionRecord } from "@/types/inspection";
+import { InspectionRecord } from "@/lib/types/inspection";
 import { MOCK_OCR_AMUL_GHEE, MOCK_OCR_NUTRIBITE_COOKIES } from "@/mocks/ocr";
 
 interface EvidencePageProps {

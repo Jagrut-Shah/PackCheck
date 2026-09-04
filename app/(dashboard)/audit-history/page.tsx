@@ -265,7 +265,7 @@ export default function AuditHistoryPage() {
                       <span>{log.inspectionNumber}</span>
                       <ExternalLink className="size-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </Link>
-                    <div className="text-[11px] text-[#475569] truncate max-w-[140px]">
+                    <div className="text-[11px] text-[#475569] truncate max-w-35">
                       {log.commodityName}
                     </div>
                   </TableCell>
@@ -278,7 +278,7 @@ export default function AuditHistoryPage() {
                   </TableCell>
                   <TableCell>
                     <div
-                      className="font-mono text-[10px] text-[#475569] bg-[#F1F5F9] px-2 py-1 rounded border border-[#E2E8F0] max-w-[160px] truncate"
+                      className="font-mono text-[10px] text-[#475569] bg-[#F1F5F9] px-2 py-1 rounded border border-[#E2E8F0] max-w-40 truncate"
                       title={log.verificationHash}
                     >
                       {log.verificationHash}

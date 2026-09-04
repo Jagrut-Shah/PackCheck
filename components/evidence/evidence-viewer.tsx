@@ -4,9 +4,9 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { Image as ImageIcon, AlertTriangle, CheckCircle2, Crosshair, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { PackageImage } from "@/types/image";
-import { OCRResult } from "@/types/ocr";
-import { ComplianceFinding } from "@/types/finding";
+import { PackageImage } from "@/lib/types/image";
+import { OCRResult } from "@/lib/types/ocr";
+import { ComplianceFinding } from "@/lib/types/finding";
 
 interface EvidenceViewerProps {
   images: PackageImage[];

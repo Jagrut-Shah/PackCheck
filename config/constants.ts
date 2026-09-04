@@ -12,7 +12,7 @@ import {
   OverallResult,
   ImageQualityStatus,
   ConfidenceLevel,
-} from "@/types/common";
+} from "@/lib/types/common";
 
 export {
   INSPECTION_STATUS,

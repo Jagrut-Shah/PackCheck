@@ -9,10 +9,10 @@ import {
   InspectionRecord,
   CreateInspectionInput,
   InspectionFilterParams,
-} from "@/types/inspection";
-import { InspectionStatus, OverallResult, INSPECTION_STATUS, OVERALL_RESULT } from "@/types/common";
-import { FieldCorrection } from "@/types/extraction";
-import { InspectionImage } from "@/types/image";
+} from "@/lib/types/inspection";
+import { InspectionStatus, OverallResult, INSPECTION_STATUS, OVERALL_RESULT } from "@/lib/types/common";
+import { FieldCorrection } from "@/lib/types/extraction";
+import { InspectionImage } from "@/lib/types/image";
 import { MOCK_INSPECTIONS } from "@/mocks/inspections";
 import { MOCK_EXTRACTION_AMUL_GHEE } from "@/mocks/extraction";
 import { MOCK_COMPLIANCE_AMUL_GHEE } from "@/mocks/compliance";

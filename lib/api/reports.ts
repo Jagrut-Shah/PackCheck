@@ -3,7 +3,7 @@
  * Mock-first async service abstraction for statutory verification report retrieval.
  */
 
-import { VerificationReportData } from "@/types/report";
+import { VerificationReportData } from "@/lib/types/report";
 import { MOCK_REPORTS, getReportById as findReportById } from "@/mocks/reports";
 import { getInspectionById } from "./inspections";
 

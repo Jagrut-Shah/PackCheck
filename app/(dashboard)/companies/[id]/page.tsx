@@ -11,7 +11,7 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { getCompanyById } from "@/lib/api/companies";
 import { getInspections } from "@/lib/api/inspections";
 import { RegisteredPacker } from "@/mocks/companies";
-import { InspectionRecord } from "@/types/inspection";
+import { InspectionRecord } from "@/lib/types/inspection";
 
 interface CompanyDetailPageProps {
   params: Promise<{ id: string }>;

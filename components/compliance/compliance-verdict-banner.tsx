@@ -1,6 +1,6 @@
 import React from "react";
 import { CheckCircle2, XCircle, AlertTriangle, Scale } from "lucide-react";
-import { OverallResult } from "@/types/common";
+import { OverallResult } from "@/lib/types/common";
 import { RESULT_CONFIG } from "@/config/constants";
 
 interface ComplianceVerdictBannerProps {

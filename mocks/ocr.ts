@@ -3,8 +3,8 @@
  * Realistic OCR payloads from PaddleOCR service conforming strictly to OCRResponse contract.
  */
 
-import { OCRResult } from "@/types/ocr";
-import { CONFIDENCE_LEVEL, PROCESSING_STATUS } from "@/types/common";
+import { OCRResult } from "@/lib/types/ocr";
+import { CONFIDENCE_LEVEL, PROCESSING_STATUS } from "@/lib/types/common";
 
 export const MOCK_OCR_AMUL_GHEE: OCRResult = {
   id: "ocr_amul_001",

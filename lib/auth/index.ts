@@ -4,7 +4,7 @@
  * Purpose: Authentication sessions, JWT/Supabase Auth handling, role authorization.
  */
 
-import { AuthSession, UserProfile } from "@/types/user";
+import { AuthSession, UserProfile } from "@/lib/types/user";
 import { CURRENT_MOCK_USER } from "@/mocks/users";
 
 export async function getCurrentSession(): Promise<AuthSession> {

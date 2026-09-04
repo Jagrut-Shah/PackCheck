@@ -11,7 +11,7 @@ import { ComplianceVerdictBanner } from "@/components/compliance/compliance-verd
 import { ComplianceFindingCard } from "@/components/compliance/compliance-finding-card";
 import { RuleChecklistItem } from "@/components/compliance/rule-checklist-item";
 import { getInspectionById } from "@/lib/api/inspections";
-import { InspectionRecord } from "@/types/inspection";
+import { InspectionRecord } from "@/lib/types/inspection";
 import { MOCK_COMPLIANCE_AMUL_GHEE, MOCK_COMPLIANCE_NUTRIBITE } from "@/mocks/compliance";
 
 interface CompliancePageProps {

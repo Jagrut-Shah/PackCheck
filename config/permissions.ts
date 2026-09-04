@@ -2,7 +2,7 @@
  * PackCheck AI - Role-Based Permissions Matrix
  */
 
-import { UserRole } from "@/types/user";
+import { UserRole } from "@/lib/types/user";
 
 export type PermissionAction =
   | "INSPECTION_CREATE"

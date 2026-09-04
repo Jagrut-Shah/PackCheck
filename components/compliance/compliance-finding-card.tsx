@@ -1,7 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { AlertTriangle, AlertCircle, Info, XCircle, ExternalLink, Image as ImageIcon } from "lucide-react";
-import { ComplianceFinding } from "@/types/finding";
+import { ComplianceFinding } from "@/lib/types/finding";
 
 interface ComplianceFindingCardProps {
   finding: ComplianceFinding;

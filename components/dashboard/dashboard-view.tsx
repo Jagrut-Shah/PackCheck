@@ -24,7 +24,7 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { Dialog } from "@/components/ui/dialog";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { StatusBadge } from "@/components/common/status-badge";
-import { InspectionRecord } from "@/types/inspection";
+import { InspectionRecord } from "@/lib/types/inspection";
 import { getInspections, getInspectionStatistics } from "@/lib/api/inspections";
 
 export function DashboardView() {

@@ -3,9 +3,9 @@
  * Deterministic rule engine evaluation outcomes conforming strictly to ComplianceRun & Finding contracts.
  */
 
-import { ComplianceEvaluation } from "@/types/compliance";
-import { ComplianceFinding } from "@/types/finding";
-import { OVERALL_RESULT } from "@/types/common";
+import { ComplianceEvaluation } from "@/lib/types/compliance";
+import { ComplianceFinding } from "@/lib/types/finding";
+import { OVERALL_RESULT } from "@/lib/types/common";
 
 export const MOCK_COMPLIANCE_AMUL_GHEE: ComplianceEvaluation = {
   inspectionId: "ins_amul_ghee_001",

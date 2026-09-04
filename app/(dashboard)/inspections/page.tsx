@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { StatusBadge } from "@/components/common/status-badge";
 import { getInspections } from "@/lib/api/inspections";
-import { InspectionRecord } from "@/types/inspection";
+import { InspectionRecord } from "@/lib/types/inspection";
 
 export default function InspectionsPage() {
   const router = useRouter();

@@ -6,8 +6,8 @@ import { InspectionStepper } from "@/components/inspections/inspection-stepper";
 import { ReportSummaryView } from "@/components/reports/report-summary-view";
 import { getInspectionById } from "@/lib/api/inspections";
 import { getReportById } from "@/lib/api/reports";
-import { InspectionRecord } from "@/types/inspection";
-import { VerificationReportData } from "@/types/report";
+import { InspectionRecord } from "@/lib/types/inspection";
+import { VerificationReportData } from "@/lib/types/report";
 
 interface ReportPageProps {
   params: Promise<{ id: string }>;

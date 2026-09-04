@@ -5,7 +5,7 @@
 
 import React from "react";
 import { Badge, BadgeVariant } from "@/components/ui/badge";
-import { InspectionStatus, OverallResult, ImageQualityStatus } from "@/types/common";
+import { InspectionStatus, OverallResult, ImageQualityStatus } from "@/lib/types/common";
 import { STATUS_CONFIG, RESULT_CONFIG, QUALITY_CONFIG } from "@/config/constants";
 
 interface StatusBadgeProps {

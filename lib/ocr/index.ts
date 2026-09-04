@@ -5,7 +5,7 @@
  * Core Workflow: Image input -> Preprocessing -> PaddleOCR -> text, confidence, bounding boxes.
  */
 
-import { OCRResult, OCRProcessingRequest } from "@/types/ocr";
+import { OCRResult, OCRProcessingRequest } from "@/lib/types/ocr";
 import { MOCK_OCR_AMUL_GHEE } from "@/mocks/ocr";
 
 export async function processImageOCR(

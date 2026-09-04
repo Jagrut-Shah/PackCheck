@@ -3,7 +3,7 @@
  * Realistic Legal Metrology Officers conforming strictly to UserContract.
  */
 
-import { UserContract } from "@/types/user";
+import { UserContract } from "@/lib/types/user";
 
 export const MOCK_USERS: UserContract[] = [
   {

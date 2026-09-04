@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { UploadCloud, X, Image as ImageIcon, ArrowUp, ArrowDown, CheckCircle2 } from "lucide-react";
-import { PackageImageAngle } from "@/types/image";
+import { PackageImageAngle } from "@/lib/types/image";
 
 export interface UploadedFileItem {
   id: string;

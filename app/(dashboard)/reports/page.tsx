@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { getReports } from "@/lib/api/reports";
-import { VerificationReportData } from "@/types/report";
+import { VerificationReportData } from "@/lib/types/report";
 
 export default function ReportsPage() {
   const router = useRouter();
@@ -112,7 +112,7 @@ export default function ReportsPage() {
                     <TableCell className="font-mono text-xs text-[#475569]">
                       {report.inspectionNumber || report.inspectionId}
                     </TableCell>
-                    <TableCell className="text-xs text-[#475569] max-w-[150px] truncate">
+                    <TableCell className="text-xs text-[#475569] max-w-37.5 truncate">
                       {report.company || report.manufacturerOrPacker}
                     </TableCell>
                     <TableCell>

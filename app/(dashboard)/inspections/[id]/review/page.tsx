@@ -18,7 +18,7 @@ import { InspectionStepper } from "@/components/inspections/inspection-stepper";
 import { ExtractionFieldRow } from "@/components/extraction/extraction-field-row";
 import { FieldEditModal } from "@/components/extraction/field-edit-modal";
 import { getInspectionById, updateInspectionField } from "@/lib/api/inspections";
-import { InspectionRecord } from "@/types/inspection";
+import { InspectionRecord } from "@/lib/types/inspection";
 import { MOCK_EXTRACTION_AMUL_GHEE } from "@/mocks/extraction";
 import { STATUTORY_REFERENCES } from "@/config/constants";
 import { CURRENT_MOCK_USER } from "@/mocks/users";

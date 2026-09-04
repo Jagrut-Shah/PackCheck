@@ -15,7 +15,7 @@ import { InspectionHeader } from "@/components/inspections/inspection-header";
 import { InspectionStepper } from "@/components/inspections/inspection-stepper";
 import { StatusBadge } from "@/components/common/status-badge";
 import { getInspectionById } from "@/lib/api/inspections";
-import { InspectionRecord } from "@/types/inspection";
+import { InspectionRecord } from "@/lib/types/inspection";
 
 interface InspectionDetailPageProps {
   params: Promise<{ id: string }>;

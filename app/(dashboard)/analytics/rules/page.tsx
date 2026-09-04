@@ -239,7 +239,7 @@ export default function RuleAnalyticsPage() {
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs text-[#475569]">Top Violation Area</p>
-              <h3 className="text-base font-bold text-[#0F172A] mt-1 truncate max-w-[140px]">
+              <h3 className="text-base font-bold text-[#0F172A] mt-1 truncate max-w-35">
                 Unit Sale Price
               </h3>
               <p className="text-[11px] text-[#DC2626] font-medium mt-1">
@@ -341,7 +341,7 @@ export default function RuleAnalyticsPage() {
                   {rule.failedCount}
                 </TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-2 min-w-[100px]">
+                  <div className="flex items-center gap-2 min-w-25">
                     <div className="flex-1 h-2 rounded-full bg-[#E2E8F0] overflow-hidden">
                       <div
                         className={`h-full rounded-full ${

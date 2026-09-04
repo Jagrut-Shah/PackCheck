@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { Download, ShieldCheck, FileText, Printer, Check, Info, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { VerificationReportData } from "@/types/report";
+import { VerificationReportData } from "@/lib/types/report";
 
 interface ReportSummaryViewProps {
   report: VerificationReportData;

@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { InspectionImageUploader, UploadedFileItem } from "@/components/inspections/inspection-image-uploader";
-import { CommodityCategory } from "@/types/inspection";
-import { InspectionImage } from "@/types/image";
+import { CommodityCategory } from "@/lib/types/inspection";
+import { InspectionImage } from "@/lib/types/image";
 import { createInspection } from "@/lib/api/inspections";
 
 export default function NewInspectionPage() {

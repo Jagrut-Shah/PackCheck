@@ -1,7 +1,7 @@
 import React from "react";
 import { Edit3, CheckCheck, Image as ImageIcon } from "lucide-react";
 import { ConfidenceIndicator } from "./confidence-indicator";
-import { ConfidenceLevel } from "@/types/common";
+import { ConfidenceLevel } from "@/lib/types/common";
 import { cn } from "@/lib/utils";
 
 interface ExtractionFieldRowProps {

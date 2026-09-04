@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, Calendar, User, MapPin, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/common/status-badge";
-import { InspectionRecord } from "@/types/inspection";
+import { InspectionRecord } from "@/lib/types/inspection";
 
 interface InspectionHeaderProps {
   inspection: InspectionRecord;

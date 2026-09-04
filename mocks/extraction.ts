@@ -3,8 +3,8 @@
  * Simulates LLM extraction + Zod schema validation outputs for Legal Metrology Rule 6.
  */
 
-import { ExtractedDeclarations } from "@/types/extraction";
-import { CONFIDENCE_LEVEL } from "@/types/common";
+import { ExtractedDeclarations } from "@/lib/types/extraction";
+import { CONFIDENCE_LEVEL } from "@/lib/types/common";
 
 export const MOCK_EXTRACTION_AMUL_GHEE: ExtractedDeclarations = {
   commodityName: {

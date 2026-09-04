@@ -5,8 +5,8 @@
  * Critical Principle: AI may assist extraction, but deterministic code MUST be the legal decision-maker.
  */
 
-import { ExtractedDeclarations } from "@/types/extraction";
-import { ComplianceEvaluation } from "@/types/compliance";
+import { ExtractedDeclarations } from "@/lib/types/extraction";
+import { ComplianceEvaluation } from "@/lib/types/compliance";
 import { MOCK_COMPLIANCE_AMUL_GHEE } from "@/mocks/compliance";
 
 export async function evaluateCompliance(

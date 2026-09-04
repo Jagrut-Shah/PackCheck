@@ -1,6 +1,6 @@
 import React from "react";
 import { CheckCircle2, AlertCircle, AlertTriangle } from "lucide-react";
-import { ConfidenceLevel } from "@/types/common";
+import { ConfidenceLevel } from "@/lib/types/common";
 
 interface ConfidenceIndicatorProps {
   level: ConfidenceLevel;

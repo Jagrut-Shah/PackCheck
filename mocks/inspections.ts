@@ -4,8 +4,8 @@
  * Conforms strictly to the canonical InspectionRecord integration contract.
  */
 
-import { InspectionRecord } from "@/types/inspection";
-import { INSPECTION_STATUS, OVERALL_RESULT, IMAGE_QUALITY_STATUS } from "@/types/common";
+import { InspectionRecord } from "@/lib/types/inspection";
+import { INSPECTION_STATUS, OVERALL_RESULT, IMAGE_QUALITY_STATUS } from "@/lib/types/common";
 import { MOCK_OCR_AMUL_GHEE, MOCK_OCR_NUTRIBITE_COOKIES } from "./ocr";
 import { MOCK_EXTRACTION_AMUL_GHEE, MOCK_EXTRACTION_NUTRIBITE } from "./extraction";
 import {

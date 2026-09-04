@@ -52,7 +52,7 @@ export default function ProfilePage() {
               </div>
               <div className="flex items-center justify-between text-[#475569]">
                 <span>Email:</span>
-                <span className="text-[#0F172A] truncate max-w-[140px]" title={user.email}>{user.email}</span>
+                <span className="text-[#0F172A] truncate max-w-35" title={user.email}>{user.email}</span>
               </div>
               <div className="flex items-center justify-between text-[#475569]">
                 <span>Organization:</span>
@@ -60,7 +60,7 @@ export default function ProfilePage() {
               </div>
               <div className="flex items-center justify-between text-[#475569]">
                 <span>Department:</span>
-                <span className="text-[#0F172A] truncate max-w-[140px]" title={user.department}>{user.department}</span>
+                <span className="text-[#0F172A] truncate max-w-35" title={user.department}>{user.department}</span>
               </div>
             </div>
           </CardContent>

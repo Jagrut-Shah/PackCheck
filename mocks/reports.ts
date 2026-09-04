@@ -3,8 +3,8 @@
  * Represents generated statutory verification reports conforming strictly to ReportContract.
  */
 
-import { VerificationReportData } from "@/types/report";
-import { OVERALL_RESULT } from "@/types/common";
+import { VerificationReportData } from "@/lib/types/report";
+import { OVERALL_RESULT } from "@/lib/types/common";
 import { MOCK_EXTRACTION_AMUL_GHEE, MOCK_EXTRACTION_NUTRIBITE } from "./extraction";
 import { MOCK_FINDINGS_NUTRIBITE, MOCK_COMPLIANCE_AMUL_GHEE, MOCK_COMPLIANCE_NUTRIBITE } from "./compliance";
 

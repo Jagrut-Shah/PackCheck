@@ -4,8 +4,8 @@
  * Purpose: Transforms raw OCR output into Legal Metrology Rule 6 declarations using LLM + Zod schema validation.
  */
 
-import { OCRResult } from "@/types/ocr";
-import { ExtractedDeclarations } from "@/types/extraction";
+import { OCRResult } from "@/lib/types/ocr";
+import { ExtractedDeclarations } from "@/lib/types/extraction";
 import { MOCK_EXTRACTION_AMUL_GHEE } from "@/mocks/extraction";
 
 export async function extractDeclarationsFromOCR(

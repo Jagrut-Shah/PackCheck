@@ -1,7 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { CheckCircle2, XCircle, AlertCircle, HelpCircle, ExternalLink } from "lucide-react";
-import { RuleEvaluationResult } from "@/types/compliance";
+import { RuleEvaluationResult } from "@/lib/types/compliance";
 
 interface RuleChecklistItemProps {
   result: RuleEvaluationResult;
