@@ -16,6 +16,8 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { Breadcrumbs, BreadcrumbItem } from "@/components/ui/breadcrumbs";
+import { getCurrentUser } from "@/lib/auth";
+import { UserProfile } from "@/lib/types/user";
 
 export interface HeaderProps {
   breadcrumbItems?: BreadcrumbItem[];
@@ -85,7 +87,20 @@ export const Header: React.FC<HeaderProps> = ({
   const router = useRouter();
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
   const [isOpen, setIsOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const u = await getCurrentUser();
+        if (u) setCurrentUser(u);
+      } catch (err) {
+        console.warn("Could not load current user session", err);
+      }
+    }
+    loadUser();
+  }, []);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -316,12 +331,30 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* User Identity Snippet */}
-        <div className="flex items-center gap-2 border-l border-[#E2E8F0] pl-3">
+        <Link
+          href="/profile"
+          className="flex items-center gap-2 border-l border-[#E2E8F0] pl-3 hover:opacity-90 transition-opacity"
+          title={currentUser?.email ? `${currentUser.fullName} (${currentUser.email})` : "View Profile"}
+        >
           <div className="size-7 rounded-full bg-gradient-to-b from-[#2563EB] to-[#1D4ED8] text-white flex items-center justify-center text-[10px] font-bold shadow-xs">
-            LM
+            {currentUser?.fullName
+              ? currentUser.fullName
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")
+                  .substring(0, 2)
+                  .toUpperCase()
+              : "LM"}
           </div>
-          <span className="hidden sm:block text-xs font-medium text-[#0F172A]">Senior Inspector</span>
-        </div>
+          <div className="hidden sm:flex flex-col text-left">
+            <span className="text-xs font-semibold text-[#0F172A] leading-tight">
+              {currentUser?.fullName || "Senior Inspector"}
+            </span>
+            <span className="text-[10px] text-[#64748B] leading-tight">
+              {currentUser?.role || currentUser?.email || "Legal Metrology"}
+            </span>
+          </div>
+        </Link>
       </div>
     </header>
   );

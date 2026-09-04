@@ -64,11 +64,11 @@ export function DashboardView() {
   // Filter inspections for table
   const filteredRecords = inspections.filter(
     (record) =>
-      record.product.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (record.product || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       (record.commodity?.commodityName &&
         record.commodity.commodityName.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      record.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.inspectionNumber.toLowerCase().includes(searchQuery.toLowerCase())
+      (record.company && record.company.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (record.inspectionNumber || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   // Items needing immediate attention (manual reviews & potential non-compliances)

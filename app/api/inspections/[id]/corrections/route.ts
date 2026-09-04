@@ -20,13 +20,27 @@ interface StoreCorrectionsResponse {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const inspectionId = params.id
+    const { id: inspectionId } = await context.params
+
+    if (!inspectionId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INVALID_REQUEST',
+            message: 'Inspection ID is required in URL path'
+          }
+        } as ApiResponse<null>,
+        { status: 400 }
+      )
+    }
+
     const body = (await request.json()) as StoreCorrectionsRequest
 
-    if (!body.corrections || body.corrections.length === 0) {
+    if (!body.corrections || !Array.isArray(body.corrections) || body.corrections.length === 0) {
       return NextResponse.json(
         {
           success: false,
@@ -37,6 +51,22 @@ export async function POST(
         } as ApiResponse<null>,
         { status: 400 }
       )
+    }
+
+    // Validate correction items
+    for (const item of body.corrections) {
+      if (!item.field_name || item.original_value === undefined || item.corrected_value === undefined) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'INVALID_REQUEST',
+              message: 'Each correction must include field_name, original_value, and corrected_value'
+            }
+          } as ApiResponse<null>,
+          { status: 400 }
+        )
+      }
     }
 
     // Verify inspection exists

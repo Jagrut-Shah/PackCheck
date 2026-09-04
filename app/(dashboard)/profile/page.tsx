@@ -1,16 +1,36 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Shield, MapPin, Mail, Settings, Save, Check, Building, BadgeCheck } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CURRENT_MOCK_USER } from "@/mocks/users";
+import { getCurrentUser } from "@/lib/auth";
+import { UserProfile } from "@/lib/types/user";
+import { useToast } from "@/components/common/toast";
 
 export default function ProfilePage() {
-  const user = CURRENT_MOCK_USER;
+  const toast = useToast();
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      setIsLoading(true);
+      try {
+        const u = await getCurrentUser();
+        if (u) setUser(u);
+      } catch (err) {
+        console.warn("Could not fetch current user in profile", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    load();
+  }, []);
+
   const [notifyNonCompliance, setNotifyNonCompliance] = useState(true);
   const [notifyManualReview, setNotifyManualReview] = useState(true);
   const [autoOpenReview, setAutoOpenReview] = useState(false);
@@ -18,7 +38,29 @@ export default function ProfilePage() {
 
   const handleSavePreferences = () => {
     setIsSaved(true);
+    toast.success("Preferences Saved", "Enforcement notification preferences updated successfully.");
     setTimeout(() => setIsSaved(false), 2000);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-12 text-center text-xs text-[#475569]">
+        Loading officer credentials...
+      </div>
+    );
+  }
+
+  const officer = user || {
+    id: "guest",
+    fullName: "Legal Metrology Inspector",
+    employeeCode: "EMP-DEL-4821",
+    email: "officer@delhi.gov.in",
+    role: "INSPECTOR",
+    designation: "Assistant Controller of Legal Metrology",
+    department: "Legal Metrology Wing",
+    organizationId: "DCA-IND",
+    jurisdictionDistrict: "Delhi NCR - Central Zone",
+    jurisdictionState: "Delhi",
   };
 
   return (
@@ -35,8 +77,8 @@ export default function ProfilePage() {
             <div className="size-20 rounded-full bg-[#EFF6FF] border-2 border-[#BFDBFE] flex items-center justify-center text-xl font-bold text-[#1D4ED8] mb-4">
               LM
             </div>
-            <h3 className="text-sm font-bold text-[#0F172A]">{user.fullName}</h3>
-            <p className="text-xs text-[#475569] mt-0.5">{user.designation}</p>
+            <h3 className="text-sm font-bold text-[#0F172A]">{officer.fullName}</h3>
+            <p className="text-xs text-[#475569] mt-0.5">{officer.designation || "Legal Metrology Inspector"}</p>
             <div className="mt-3">
               <Badge variant="pass">Active Enforcement Clearance</Badge>
             </div>
@@ -44,23 +86,23 @@ export default function ProfilePage() {
             <div className="w-full border-t border-[#E2E8F0] mt-5 pt-4 text-xs text-left space-y-2.5">
               <div className="flex items-center justify-between text-[#475569]">
                 <span>Employee Code:</span>
-                <span className="font-mono font-bold text-[#0F172A]">{user.employeeCode || "EMP-DEL-4821"}</span>
+                <span className="font-mono font-bold text-[#0F172A]">{officer.employeeCode || "EMP-DEL-4821"}</span>
               </div>
               <div className="flex items-center justify-between text-[#475569]">
                 <span>Role:</span>
-                <span className="font-semibold text-[#1D4ED8]">{user.role}</span>
+                <span className="font-semibold text-[#1D4ED8]">{officer.role}</span>
               </div>
               <div className="flex items-center justify-between text-[#475569]">
                 <span>Email:</span>
-                <span className="text-[#0F172A] truncate max-w-35" title={user.email}>{user.email}</span>
+                <span className="text-[#0F172A] truncate max-w-35" title={officer.email}>{officer.email}</span>
               </div>
               <div className="flex items-center justify-between text-[#475569]">
                 <span>Organization:</span>
-                <span className="text-[#0F172A]">{user.organizationId || "DCA-IND"}</span>
+                <span className="text-[#0F172A]">{officer.organizationId || "DCA-IND"}</span>
               </div>
               <div className="flex items-center justify-between text-[#475569]">
                 <span>Department:</span>
-                <span className="text-[#0F172A] truncate max-w-35" title={user.department}>{user.department}</span>
+                <span className="text-[#0F172A] truncate max-w-35" title={officer.department}>{officer.department || "Legal Metrology Wing"}</span>
               </div>
             </div>
           </CardContent>
@@ -86,11 +128,11 @@ export default function ProfilePage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="font-semibold text-[#0F172A]">Assigned Territory</span>
-                  <span className="text-[#475569]">{user.jurisdictionDistrict}</span>
+                  <span className="text-[#475569]">{officer.jurisdictionDistrict || "Delhi NCR - Central Zone"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="font-semibold text-[#0F172A]">Department Wing</span>
-                  <span className="text-[#475569]">{user.department}</span>
+                  <span className="text-[#475569]">{officer.department || "Legal Metrology Wing"}</span>
                 </div>
               </div>
 

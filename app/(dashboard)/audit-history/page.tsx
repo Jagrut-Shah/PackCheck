@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   History,
@@ -22,10 +22,24 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 
-interface AuditLogEntry {
+import { useToast } from "@/components/common/toast";
+
+export interface AuditLogEntry {
   id: string;
   timestamp: string;
-  action: "FIELD_OVERRIDE" | "CERTIFICATE_GENERATED" | "OCR_INGESTION" | "VERDICT_CONFIRMED" | "INSPECTION_CREATED";
+  action:
+    | "FIELD_OVERRIDE"
+    | "CERTIFICATE_GENERATED"
+    | "OCR_INGESTION"
+    | "VERDICT_CONFIRMED"
+    | "INSPECTION_CREATED"
+    | "IMAGE_UPLOADED"
+    | "OCR_COMPLETED"
+    | "FIELD_CORRECTED"
+    | "COMPLIANCE_RUN"
+    | "FINDING_CREATED"
+    | "REPORT_GENERATED"
+    | "INSPECTION_COMPLETED";
   actionLabel: string;
   inspectionNumber: string;
   inspectionId: string;
@@ -37,85 +51,33 @@ interface AuditLogEntry {
   ipAddress: string;
 }
 
-const MOCK_AUDIT_LOGS: AuditLogEntry[] = [
-  {
-    id: "aud_001",
-    timestamp: "2026-09-04T07:15:22Z",
-    action: "CERTIFICATE_GENERATED",
-    actionLabel: "Statutory Certificate Signed",
-    inspectionNumber: "INS-2026-0101",
-    inspectionId: "ins_amul_ghee_001",
-    commodityName: "Pure Ghee 1L Tin",
-    officerName: "Rajesh Kumar Sharma",
-    officerId: "usr_delhi_001",
-    details: "Generated tamper-evident certificate with QR hash under Section 15 Legal Metrology Act.",
-    verificationHash: "sha256:e89f471b384a22c109dfbc56e729a1b4",
-    ipAddress: "10.42.18.91 (Enforcement Terminal)",
-  },
-  {
-    id: "aud_002",
-    timestamp: "2026-09-04T06:48:10Z",
-    action: "FIELD_OVERRIDE",
-    actionLabel: "Manual Field Override",
-    inspectionNumber: "INS-2026-0102",
-    inspectionId: "ins_nutribite_002",
-    commodityName: "NutriBite Multigrain Cookies",
-    officerName: "Rajesh Kumar Sharma",
-    officerId: "usr_delhi_001",
-    details: "Confirmed missing Unit Sale Price (USP). Overrode system draft from REVIEW to NON_COMPLIANT.",
-    verificationHash: "sha256:91c7a884f2bb41daee012bc556e4210a",
-    ipAddress: "10.42.18.91 (Enforcement Terminal)",
-  },
-  {
-    id: "aud_003",
-    timestamp: "2026-09-03T16:30:00Z",
-    action: "VERDICT_CONFIRMED",
-    actionLabel: "Compliance Verdict Approved",
-    inspectionNumber: "INS-2026-0101",
-    inspectionId: "ins_amul_ghee_001",
-    commodityName: "Pure Ghee 1L Tin",
-    officerName: "Rajesh Kumar Sharma",
-    officerId: "usr_delhi_001",
-    details: "All 8 statutory declarations evaluated and passed under PCR 2011.",
-    verificationHash: "sha256:4f3a9e227189c4ad1b7829acdf41920e",
-    ipAddress: "10.42.18.91 (Enforcement Terminal)",
-  },
-  {
-    id: "aud_004",
-    timestamp: "2026-09-03T11:21:28Z",
-    action: "OCR_INGESTION",
-    actionLabel: "Multi-Angle OCR Extraction",
-    inspectionNumber: "INS-2026-0101",
-    inspectionId: "ins_amul_ghee_001",
-    commodityName: "Pure Ghee 1L Tin",
-    officerName: "System Automated Engine",
-    officerId: "engine_ocr_v2",
-    details: "Processed 3 package angles (PDP, Back, Base). Extracted 8 mandatory declarations with 94.2% mean confidence.",
-    verificationHash: "sha256:a1c890ef22b7d41a80c94833bb175e3a",
-    ipAddress: "127.0.0.1 (Local AI Pipeline)",
-  },
-  {
-    id: "aud_005",
-    timestamp: "2026-09-03T11:15:00Z",
-    action: "INSPECTION_CREATED",
-    actionLabel: "Inspection Record Initialized",
-    inspectionNumber: "INS-2026-0101",
-    inspectionId: "ins_amul_ghee_001",
-    commodityName: "Pure Ghee 1L Tin",
-    officerName: "Rajesh Kumar Sharma",
-    officerId: "usr_delhi_001",
-    details: "Initiated routine market surveillance at Connaught Place Supermarket, Delhi NCR.",
-    verificationHash: "sha256:7bc3081e649033df09e1cba58213aa99",
-    ipAddress: "10.42.18.91 (Enforcement Terminal)",
-  },
-];
-
 export default function AuditHistoryPage() {
+  const toast = useToast();
+  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [actionFilter, setActionFilter] = useState("ALL");
   const [isExporting, setIsExporting] = useState(false);
 
-  const filteredLogs = MOCK_AUDIT_LOGS.filter((entry) => {
+  useEffect(() => {
+    async function loadLogs() {
+      setIsLoading(true);
+      try {
+        const res = await fetch("/api/audit-logs");
+        const json = await res.json();
+        if (json.success && json.data?.logs) {
+          setLogs(json.data.logs);
+        }
+      } catch (err) {
+        console.error("Failed to load real audit trail:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadLogs();
+  }, []);
+
+  const filteredLogs = logs.filter((entry) => {
     const q = searchQuery.toLowerCase().trim();
     const matchesSearch =
       !q ||
@@ -132,22 +94,31 @@ export default function AuditHistoryPage() {
     setIsExporting(true);
     setTimeout(() => {
       setIsExporting(false);
-      alert("Statutory audit log exported successfully as cryptographically signed CSV.");
-    }, 800);
+      toast.success(
+        "Audit Log Exported",
+        "Statutory audit trail exported successfully as cryptographically signed CSV."
+      );
+    }, 600);
   };
 
   const getActionBadgeVariant = (action: AuditLogEntry["action"]) => {
     switch (action) {
       case "CERTIFICATE_GENERATED":
+      case "REPORT_GENERATED":
+      case "INSPECTION_COMPLETED":
         return "pass";
       case "FIELD_OVERRIDE":
+      case "FIELD_CORRECTED":
         return "review";
       case "VERDICT_CONFIRMED":
+      case "COMPLIANCE_RUN":
         return "pass";
+      case "FINDING_CREATED":
+        return "fail";
       case "OCR_INGESTION":
-        return "neutral";
+      case "OCR_COMPLETED":
+      case "IMAGE_UPLOADED":
       case "INSPECTION_CREATED":
-        return "neutral";
       default:
         return "neutral";
     }
@@ -233,7 +204,20 @@ export default function AuditHistoryPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredLogs.map((log) => {
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-32 text-center text-xs text-[#475569]">
+                  Loading statutory audit records from database...
+                </TableCell>
+              </TableRow>
+            ) : filteredLogs.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-32 text-center text-xs text-[#475569]">
+                  No statutory audit events found matching active filters.
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredLogs.map((log) => {
               const date = new Date(log.timestamp);
               const formattedDate = date.toLocaleDateString("en-IN", {
                 day: "2-digit",
@@ -287,7 +271,7 @@ export default function AuditHistoryPage() {
                   </TableCell>
                 </TableRow>
               );
-            })}
+            }))}
           </TableBody>
         </Table>
       </div>

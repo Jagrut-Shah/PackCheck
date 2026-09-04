@@ -12,10 +12,23 @@ interface ReportDataResponse {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const inspectionId = params.id
+    const { id: inspectionId } = await context.params
+
+    if (!inspectionId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INVALID_REQUEST',
+            message: 'Inspection ID is required in URL path'
+          }
+        } as ApiResponse<null>,
+        { status: 400 }
+      )
+    }
 
     // Fetch inspection
     const { data: inspection, error: inspectionError } = await supabase
@@ -43,11 +56,19 @@ export async function GET(
       .select('*')
       .eq('inspection_id', inspectionId)
 
+    if (fieldsError) {
+      console.error('Fetch extracted fields error:', fieldsError)
+    }
+
     // Fetch corrections
     const { data: corrections, error: correctionsError } = await supabase
       .from('inspector_corrections')
       .select('*')
       .eq('inspection_id', inspectionId)
+
+    if (correctionsError) {
+      console.error('Fetch corrections error:', correctionsError)
+    }
 
     // Fetch findings
     const { data: findings, error: findingsError } = await supabase
@@ -55,12 +76,20 @@ export async function GET(
       .select('*')
       .eq('inspection_id', inspectionId)
 
+    if (findingsError) {
+      console.error('Fetch findings error:', findingsError)
+    }
+
     // Fetch final result
     const { data: finalResult, error: resultError } = await supabase
       .from('final_results')
       .select('*')
       .eq('inspection_id', inspectionId)
-      .single()
+      .maybeSingle()
+
+    if (resultError) {
+      console.error('Fetch final result error:', resultError)
+    }
 
     return NextResponse.json(
       {

@@ -17,11 +17,13 @@ import { InspectionHeader } from "@/components/inspections/inspection-header";
 import { InspectionStepper } from "@/components/inspections/inspection-stepper";
 import { ExtractionFieldRow } from "@/components/extraction/extraction-field-row";
 import { FieldEditModal } from "@/components/extraction/field-edit-modal";
-import { getInspectionById, updateInspectionField } from "@/lib/api/inspections";
+import { getInspectionById, updateInspectionField, storeComplianceResults } from "@/lib/api/inspections";
 import { InspectionRecord } from "@/lib/types/inspection";
 import { MOCK_EXTRACTION_AMUL_GHEE } from "@/mocks/extraction";
 import { STATUTORY_REFERENCES } from "@/config/constants";
-import { CURRENT_MOCK_USER } from "@/mocks/users";
+import { getCurrentUser } from "@/lib/auth";
+import { evaluateCompliance } from "@/lib/compliance";
+import { useToast } from "@/components/common/toast";
 
 interface ReviewPageProps {
   params: Promise<{ id: string }>;
@@ -43,6 +45,7 @@ interface FieldItemState {
 export default function ExtractionReviewPage({ params }: ReviewPageProps) {
   const resolvedParams = use(params);
   const router = useRouter();
+  const toast = useToast();
   const inspectionId = resolvedParams.id;
 
   const [inspection, setInspection] = useState<InspectionRecord | null>(null);
@@ -59,13 +62,21 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
     label: "",
     currentValue: "",
   });
+  const [hasNoExtraction, setHasNoExtraction] = useState(false);
 
   useEffect(() => {
     async function load() {
       const data = await getInspectionById(inspectionId);
       if (data) {
         setInspection(data);
-        const decl = data.extractedDeclarations || MOCK_EXTRACTION_AMUL_GHEE;
+        const isLegacyMock = data.id.startsWith("INSP-") || data.id === "insp_amul_ghee";
+        const decl = data.extractedDeclarations || (isLegacyMock ? MOCK_EXTRACTION_AMUL_GHEE : null);
+
+        if (!decl) {
+          setHasNoExtraction(true);
+          return;
+        }
+        setHasNoExtraction(false);
 
         setFields({
           productName: {
@@ -256,33 +267,87 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
     const item = fields[key];
     if (!item) return;
 
-    // Update local state immediately
-    setFields((prev) => ({
-      ...prev,
-      [key]: {
-        ...prev[key],
-        value: newValue,
-        isOverridden: true,
-      },
-    }));
+    try {
+      const currentUser = await getCurrentUser();
+      const origVal = item.originalValue || item.rawValue || item.value;
 
-    // Persist to mock API storage
-    await updateInspectionField(inspectionId, {
-      fieldId: `field_${key}`,
-      inspectionId,
-      fieldName: key,
-      oldValue: item.value,
-      newValue,
-      correctedBy: CURRENT_MOCK_USER.fullName,
-      correctionReason: reason || "Manual inspector label review",
-      correctedTimestamp: new Date().toISOString(),
-    });
+      await updateInspectionField(inspectionId, {
+        fieldId: `field_${key}`,
+        inspectionId,
+        fieldName: key,
+        oldValue: origVal,
+        newValue,
+        correctedBy: currentUser?.fullName || "Legal Metrology Inspector",
+        correctionReason: reason || "Manual inspector label review",
+        correctedTimestamp: new Date().toISOString(),
+      });
+
+      // Update local state ONLY after backend success
+      setFields((prev) => ({
+        ...prev,
+        [key]: {
+          ...prev[key],
+          value: newValue,
+          isOverridden: true,
+        },
+      }));
+      setEditModal((prev) => ({ ...prev, isOpen: false }));
+      toast.success(
+        "Field Correction Saved",
+        `Statutory declaration '${item.label}' updated and persisted to database.`
+      );
+    } catch (err) {
+      console.error("Failed to save field correction to backend:", err);
+      toast.error(
+        "Correction Failed",
+        "Failed to persist field correction to backend database. Please try again."
+      );
+    }
+  };
+
+  const handleProceedToCompliance = async () => {
+    if (inspection?.extractedDeclarations) {
+      try {
+        const evaluation = await evaluateCompliance(inspection.extractedDeclarations);
+        await storeComplianceResults(inspection.id, evaluation);
+      } catch (e) {
+        console.warn("Could not pre-sync compliance results:", e);
+      }
+    }
+    router.push(`/inspections/${inspection?.id || inspectionId}/compliance`);
   };
 
   if (!inspection) {
     return (
       <div className="p-8 text-center text-xs text-[#475569]">
         Loading inspection review workspace...
+      </div>
+    );
+  }
+
+  if (hasNoExtraction) {
+    return (
+      <div className="flex flex-col gap-6 max-w-5xl mx-auto">
+        <InspectionHeader inspection={inspection} />
+        <InspectionStepper inspectionId={inspection.id} />
+        <Card className="border-[#E2E8F0] bg-white shadow-2xs p-8 text-center space-y-4">
+          <div className="mx-auto size-12 rounded-full bg-[#EFF6FF] flex items-center justify-center text-[#1D4ED8]">
+            <Info className="size-6" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-[#0F172A]">No Extracted Declarations Yet</h3>
+            <p className="text-xs text-[#475569] max-w-md mx-auto">
+              This inspection has not yet been processed through the optical character recognition and declaration extraction pipeline.
+            </p>
+          </div>
+          <div>
+            <Link href={`/inspections/${inspection.id}/processing`}>
+              <Button variant="primary" size="md" rightIcon={<ArrowRight className="size-4" />}>
+                Run Extraction Pipeline
+              </Button>
+            </Link>
+          </div>
+        </Card>
       </div>
     );
   }
@@ -431,7 +496,7 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
           <Button
             variant="primary"
             size="md"
-            onClick={() => router.push(`/inspections/${inspection.id}/compliance`)}
+            onClick={handleProceedToCompliance}
             rightIcon={<ArrowRight className="size-4" />}
           >
             Continue to Compliance Check

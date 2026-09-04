@@ -79,3 +79,8 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
   const session = await getCurrentSession();
   return session.user;
 }
+
+export async function signOut() {
+  return supabase.auth.signOut();
+}
+

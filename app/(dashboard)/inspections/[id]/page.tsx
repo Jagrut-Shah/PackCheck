@@ -127,14 +127,14 @@ export default function InspectionDetailPage({ params }: InspectionDetailPagePro
                   <span className="text-[10px] uppercase font-bold text-[#475569]">Declared MRP</span>
                   <p className="font-bold text-[#0F172A] mt-0.5">
                     {inspection.extractedDeclarations?.mrp?.value?.rawText ||
-                      (inspection.commodity?.declaredMRP ? `₹${inspection.commodity.declaredMRP}` : "₹650.00")}
+                      (inspection.commodity?.declaredMRP ? `₹${inspection.commodity.declaredMRP}` : "—")}
                   </p>
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold text-[#475569]">Declared Net Quantity</span>
                   <p className="font-bold text-[#0F172A] mt-0.5">
                     {inspection.extractedDeclarations?.netQuantity?.value?.rawText ||
-                      inspection.commodity?.declaredNetQuantity || "1 L (905 g)"}
+                      inspection.commodity?.declaredNetQuantity || "—"}
                   </p>
                 </div>
               </div>

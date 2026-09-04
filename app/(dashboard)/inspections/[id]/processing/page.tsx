@@ -14,8 +14,15 @@ import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { InspectionStepper } from "@/components/inspections/inspection-stepper";
-import { getInspectionById, updateInspectionStatus } from "@/lib/api/inspections";
+import {
+  getInspectionById,
+  storeExtractedFields,
+  storeComplianceResults,
+} from "@/lib/api/inspections";
+import { extractDeclarationsFromOCR } from "@/lib/extraction";
+import { evaluateCompliance } from "@/lib/compliance";
 import { InspectionRecord } from "@/lib/types/inspection";
+import { useToast } from "@/components/common/toast";
 
 interface ProcessingPageProps {
   params: Promise<{ id: string }>;
@@ -31,12 +38,16 @@ interface PipelineStage {
 export default function ProcessingPage({ params }: ProcessingPageProps) {
   const resolvedParams = use(params);
   const router = useRouter();
+  const toast = useToast();
   const inspectionId = resolvedParams.id;
 
   const [inspection, setInspection] = useState<InspectionRecord | null>(null);
   const [activeStage, setActiveStage] = useState(1);
   const [isCompleted, setIsCompleted] = useState(false);
   const [isAborted, setIsAborted] = useState(false);
+  const [alreadyProcessed, setAlreadyProcessed] = useState(false);
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
+  const hasPersistedRef = React.useRef(false);
   const [logs, setLogs] = useState<string[]>([
     "10:42:01.120 [INGESTION] Package photograph payload received. Checksum: SHA-256 (3 files validated).",
   ]);
@@ -46,6 +57,16 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
       const data = await getInspectionById(inspectionId);
       if (data) {
         setInspection(data);
+        if (
+          (data.extractedDeclarations && Object.keys(data.extractedDeclarations).length > 0) ||
+          data.status === "MANUAL_REVIEW" ||
+          data.status === "COMPLETED"
+        ) {
+          setAlreadyProcessed(true);
+          setActiveStage(7);
+          setIsCompleted(true);
+          hasPersistedRef.current = true;
+        }
       }
     }
     load();
@@ -106,28 +127,102 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
     7: "10:42:05.020 [REPORT_BUILDER] Verification package assembled with cryptographic hash.",
   };
 
-  // Controlled timed simulation
+  // Controlled pipeline execution with true persistence synchronization
   useEffect(() => {
-    if (isAborted) return;
+    if (isAborted || alreadyProcessed || isCompleted || pipelineError) return;
 
-    if (activeStage <= 7) {
-      const timer = setTimeout(() => {
-        if (activeStage === 7) {
-          setIsCompleted(true);
-          updateInspectionStatus(inspectionId, "MANUAL_REVIEW");
-        } else {
-          setActiveStage((prev) => {
-            const next = prev + 1;
-            if (logMessages[next]) {
-              setLogs((l) => [...l, logMessages[next]]);
+    let isCancelled = false;
+
+    async function advancePipeline() {
+      try {
+        if (activeStage === 1) {
+          await new Promise((r) => setTimeout(r, 600));
+          if (isCancelled) return;
+          setActiveStage(2);
+          setLogs((l) => [...l, logMessages[2]]);
+        } else if (activeStage === 2) {
+          await new Promise((r) => setTimeout(r, 600));
+          if (isCancelled) return;
+          setActiveStage(3);
+          setLogs((l) => [...l, logMessages[3]]);
+        } else if (activeStage === 3) {
+          await new Promise((r) => setTimeout(r, 600));
+          if (isCancelled) return;
+          setActiveStage(4);
+          setLogs((l) => [...l, logMessages[4]]);
+        } else if (activeStage === 4) {
+          // Extraction phase: produce declarations and persist to Supabase
+          const extractionCtx = {
+            productName: inspection?.product || inspection?.commodity?.commodityName,
+            brandName: inspection?.commodity?.brandName,
+            manufacturerName: inspection?.company || inspection?.commodity?.manufacturerName,
+          };
+          const declarations = await extractDeclarationsFromOCR({} as any, extractionCtx);
+          if (isCancelled) return;
+          await storeExtractedFields(inspectionId, declarations);
+          if (isCancelled) return;
+          setActiveStage(5);
+          setLogs((l) => [...l, logMessages[5]]);
+        } else if (activeStage === 5) {
+          await new Promise((r) => setTimeout(r, 500));
+          if (isCancelled) return;
+          setActiveStage(6);
+          setLogs((l) => [...l, logMessages[6]]);
+        } else if (activeStage === 6) {
+          // Compliance phase: evaluate statutory compliance and persist findings & verdict
+          const extractionCtx = {
+            productName: inspection?.product || inspection?.commodity?.commodityName,
+            brandName: inspection?.commodity?.brandName,
+            manufacturerName: inspection?.company || inspection?.commodity?.manufacturerName,
+          };
+          const declarations = await extractDeclarationsFromOCR({} as any, extractionCtx);
+          const evaluation = await evaluateCompliance(declarations);
+          if (isCancelled) return;
+          await storeComplianceResults(inspectionId, evaluation);
+          if (isCancelled) return;
+          setActiveStage(7);
+          setLogs((l) => [...l, logMessages[7]]);
+        } else if (activeStage === 7) {
+          if (!hasPersistedRef.current) {
+            hasPersistedRef.current = true;
+            setIsCompleted(true);
+            const fresh = await getInspectionById(inspectionId);
+            if (fresh && !isCancelled) {
+              setInspection(fresh);
+              if (fresh.overallResult === "PASS") {
+                toast.success(
+                  "Compliance Verification Completed",
+                  "Product passed all evaluated checks under Legal Metrology Rules, 2011."
+                );
+              } else if (fresh.overallResult === "POTENTIAL_NON_COMPLIANCE") {
+                toast.warning(
+                  "Compliance Verification Completed",
+                  "Potential non-compliance detected. Review flagged declarations."
+                );
+              } else {
+                toast.info(
+                  "Pipeline Completed",
+                  "Processing complete. Manual inspector review recommended."
+                );
+              }
             }
-            return next;
-          });
+          }
         }
-      }, 700);
-      return () => clearTimeout(timer);
+      } catch (err) {
+        console.error("Pipeline failure:", err);
+        if (!isCancelled) {
+          setPipelineError(err instanceof Error ? err.message : "Pipeline execution failed");
+          toast.error("Pipeline Failed", "Failed to persist extraction or compliance data.");
+        }
+      }
     }
-  }, [activeStage, inspectionId, isAborted]);
+
+    advancePipeline();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeStage, inspectionId, isAborted, alreadyProcessed, isCompleted, pipelineError, toast]);
 
   const progressPercent = Math.min(100, Math.round((activeStage / 7) * 100));
   const estSecondsRemaining = Math.max(0, (7 - activeStage) * 0.7).toFixed(1);
@@ -374,9 +469,27 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
                 ))}
               </div>
 
+              {pipelineError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-900 flex items-center justify-between">
+                  <span>{pipelineError}</span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setPipelineError(null);
+                      setActiveStage(4);
+                    }}
+                  >
+                    Retry Pipeline
+                  </Button>
+                </div>
+              )}
+
               <div className="pt-4 border-t border-[#F1F5F9] flex items-center justify-between">
                 <span className="text-xs text-[#475569]">
-                  {isCompleted
+                  {pipelineError
+                    ? "Pipeline stopped due to error."
+                    : isCompleted
                     ? "All 7 stages evaluated. Proceed to verify extracted statutory declarations."
                     : "Processing package evidence..."}
                 </span>

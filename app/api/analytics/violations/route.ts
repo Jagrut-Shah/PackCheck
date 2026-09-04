@@ -68,6 +68,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       )
     }
 
+    // Get final results for accurate pass/fail outcome
+    const { data: finalResults } = await supabase
+      .from('final_results')
+      .select('inspection_id, status')
+
     // Aggregate by groupBy field
     const aggregated: { [key: string]: { pass: number; fail: number; violations: number } } = {}
 
@@ -77,9 +82,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         aggregated[key] = { pass: 0, fail: 0, violations: 0 }
       }
 
-      if (inspection.status === 'COMPLETED') {
+      const result = finalResults?.find((r: any) => r.inspection_id === inspection.id)
+      const outcome = result?.status || inspection.status
+
+      if (outcome === 'PASS') {
         aggregated[key].pass += 1
-      } else if (inspection.status === 'COMPLETED') {
+      } else if (outcome === 'FAIL' || outcome === 'POTENTIAL_NON_COMPLIANCE') {
         aggregated[key].fail += 1
       }
     })

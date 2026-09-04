@@ -33,6 +33,33 @@ export const OVERALL_RESULT = {
 export type OverallResult = (typeof OVERALL_RESULT)[keyof typeof OVERALL_RESULT];
 
 /**
+ * Backend database representation of compliance outcome.
+ */
+export type BackendComplianceStatus = 'PASS' | 'FAIL' | 'MANUAL_REVIEW';
+
+/**
+ * Normalizes backend database status ('FAIL') to canonical frontend verdict ('POTENTIAL_NON_COMPLIANCE').
+ */
+export function toFrontendOverallResult(backendStatus: string | null | undefined): OverallResult {
+  if (!backendStatus) return OVERALL_RESULT.MANUAL_REVIEW;
+  const upper = backendStatus.toUpperCase();
+  if (upper === 'PASS') return OVERALL_RESULT.PASS;
+  if (upper === 'FAIL' || upper === 'POTENTIAL_NON_COMPLIANCE') return OVERALL_RESULT.POTENTIAL_NON_COMPLIANCE;
+  return OVERALL_RESULT.MANUAL_REVIEW;
+}
+
+/**
+ * Maps frontend canonical verdict to backend database enum ('PASS' | 'FAIL' | 'MANUAL_REVIEW').
+ */
+export function toBackendComplianceStatus(frontendResult: string | null | undefined): BackendComplianceStatus {
+  if (!frontendResult) return 'MANUAL_REVIEW';
+  const upper = frontendResult.toUpperCase();
+  if (upper === 'PASS') return 'PASS';
+  if (upper === 'POTENTIAL_NON_COMPLIANCE' || upper === 'FAIL') return 'FAIL';
+  return 'MANUAL_REVIEW';
+}
+
+/**
  * Async processing pipeline stage status (OCR, AI extraction, compliance execution).
  * Distinct from InspectionStatus.
  */

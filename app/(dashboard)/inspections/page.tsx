@@ -20,20 +20,24 @@ export default function InspectionsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [verdictFilter, setVerdictFilter] = useState<string>("ALL");
   const [companyFilter, setCompanyFilter] = useState<string>("ALL");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const loadInspections = async () => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const data = await getInspections();
+      setInspections(data);
+    } catch (e) {
+      console.error("Failed to load inspections", e);
+      setErrorMessage(e instanceof Error ? e.message : "Failed to load inspections from backend.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function load() {
-      setIsLoading(true);
-      try {
-        const data = await getInspections();
-        setInspections(data);
-      } catch (e) {
-        console.error("Failed to load inspections", e);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    load();
+    loadInspections();
   }, []);
 
   // Unique list of companies for the company filter dropdown
@@ -49,11 +53,11 @@ export default function InspectionsPage() {
     const q = searchQuery.toLowerCase().trim();
     const matchesSearch =
       !q ||
-      item.inspectionNumber.toLowerCase().includes(q) ||
-      item.product.toLowerCase().includes(q) ||
+      (item.inspectionNumber || "").toLowerCase().includes(q) ||
+      (item.product || "").toLowerCase().includes(q) ||
       (item.commodity?.commodityName && item.commodity.commodityName.toLowerCase().includes(q)) ||
       (item.commodity?.brandName && item.commodity.brandName.toLowerCase().includes(q)) ||
-      item.company.toLowerCase().includes(q) ||
+      (item.company && item.company.toLowerCase().includes(q)) ||
       (item.commodity?.manufacturerName && item.commodity.manufacturerName.toLowerCase().includes(q));
 
     const matchesStatus = statusFilter === "ALL" || item.status === statusFilter;
@@ -155,6 +159,18 @@ export default function InspectionsPage() {
                 <TableRow>
                   <TableCell colSpan={8} className="h-36 text-center text-xs text-[#475569]">
                     Loading statutory inspection records...
+                  </TableCell>
+                </TableRow>
+              ) : errorMessage ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="h-36 text-center text-xs text-[#DC2626]">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <AlertCircle className="size-6 text-[#DC2626]" />
+                      <p className="font-semibold">{errorMessage}</p>
+                      <Button variant="secondary" size="sm" onClick={loadInspections}>
+                        Retry Request
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : filteredInspections.length === 0 ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   BarChart3,
@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { apiClient } from "@/lib/api/client";
 
 interface StatutoryRuleMetric {
   ruleId: string;
@@ -146,9 +147,44 @@ const STATUTORY_RULES_METRICS: StatutoryRuleMetric[] = [
   },
 ];
 
+interface AnalyticsItem {
+  category: string;
+  violation_count: number;
+  pass_count: number;
+  fail_count: number;
+  fail_rate: string;
+}
+
+interface AnalyticsApiResponse {
+  data: AnalyticsItem[];
+  group_by: string;
+}
+
 export default function RuleAnalyticsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      setIsLoading(true);
+      setErrorMessage(null);
+      try {
+        const res = await apiClient.get<AnalyticsApiResponse>("/api/analytics/violations?group_by=product_type");
+        if (res && Array.isArray(res.data)) {
+          setAnalyticsData(res.data);
+        }
+      } catch (err) {
+        console.error("Failed to load violations analytics", err);
+        setErrorMessage(err instanceof Error ? err.message : "Failed to load backend analytics.");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    load();
+  }, []);
 
   const filteredRules = STATUTORY_RULES_METRICS.filter((rule) => {
     const q = searchQuery.toLowerCase().trim();
@@ -164,6 +200,15 @@ export default function RuleAnalyticsPage() {
   const totalEvaluated = STATUTORY_RULES_METRICS.reduce((acc, r) => acc + r.totalEvaluated, 0);
   const totalPassed = STATUTORY_RULES_METRICS.reduce((acc, r) => acc + r.passedCount, 0);
   const overallRate = ((totalPassed / totalEvaluated) * 100).toFixed(1);
+
+  const totalViolations = analyticsData.reduce((acc, item) => acc + item.violation_count, 0);
+  const totalBackendPass = analyticsData.reduce((acc, item) => acc + item.pass_count, 0);
+  const totalBackendFail = analyticsData.reduce((acc, item) => acc + item.fail_count, 0);
+  const totalBackendAudited = totalBackendPass + totalBackendFail;
+  const backendComplianceRate = totalBackendAudited > 0
+    ? ((totalBackendPass / totalBackendAudited) * 100).toFixed(1)
+    : overallRate;
+  const topViolationItem = [...analyticsData].sort((a, b) => b.violation_count - a.violation_count)[0];
 
   return (
     <div className="flex flex-col gap-6">

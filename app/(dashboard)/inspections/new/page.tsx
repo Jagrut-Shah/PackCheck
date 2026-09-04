@@ -12,9 +12,12 @@ import { InspectionImageUploader, UploadedFileItem } from "@/components/inspecti
 import { CommodityCategory } from "@/lib/types/inspection";
 import { InspectionImage } from "@/lib/types/image";
 import { createInspection } from "@/lib/api/inspections";
+import { getCurrentUser } from "@/lib/auth";
+import { useToast } from "@/components/common/toast";
 
 export default function NewInspectionPage() {
   const router = useRouter();
+  const toast = useToast();
 
   // Form State
   const [commodityName, setCommodityName] = useState("");
@@ -38,8 +41,24 @@ export default function NewInspectionPage() {
       return;
     }
 
+    if (uploadedFiles.length === 0) {
+      setErrorMessage("Please upload at least one package photo before starting verification.");
+      return;
+    }
+
     setIsSubmitting(true);
+    setErrorMessage("");
+
     try {
+      const user = await getCurrentUser();
+      if (!user?.id) {
+        setErrorMessage("Authentication required: You must be logged in to initialize an inspection. Please sign in.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const filesToUpload = uploadedFiles.map((item) => item.file).filter(Boolean);
+
       // Map uploaded client files to canonical InspectionImage structures
       const inspectionImages: InspectionImage[] = uploadedFiles.map((item, idx) => ({
         id: `img_${Date.now()}_${idx}`,
@@ -75,14 +94,21 @@ export default function NewInspectionPage() {
           inspectionType,
           notes: notes.trim() || undefined,
         },
-        inspectionImages
+        inspectionImages,
+        filesToUpload
+      );
+
+      toast.success(
+        "Inspection Created",
+        `Inspection record for '${commodityName.trim()}' initialized successfully.`
       );
 
       // Route directly to the 7-stage processing visualizer
       router.push(`/inspections/${newInspection.id}/processing`);
     } catch (err) {
       console.error("Error creating inspection", err);
-      setErrorMessage("Error initializing inspection record. Please check inputs and try again.");
+      const msg = err instanceof Error ? err.message : "Error initializing inspection record. Please check inputs and try again.";
+      setErrorMessage(msg);
       setIsSubmitting(false);
     }
   };

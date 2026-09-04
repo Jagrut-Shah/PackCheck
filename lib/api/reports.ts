@@ -1,69 +1,212 @@
 /**
  * PackCheck AI - Reports API Client Layer
- * Mock-first async service abstraction for statutory verification report retrieval.
+ * Production API integration connecting Report previews to GET /api/inspections/[id]/report-data.
+ * Provides single canonical mapping layer between backend report-data responses and frontend VerificationReportData.
  */
 
 import { VerificationReportData } from "@/lib/types/report";
-import { MOCK_REPORTS, getReportById as findReportById } from "@/mocks/reports";
-import { getInspectionById } from "./inspections";
+import { Finding } from "@/lib/types/finding";
+import { toFrontendOverallResult } from "@/lib/types/common";
+import { getReportById as findLegacyMockReportById } from "@/mocks/reports";
+import {
+  getInspections,
+  getInspectionById,
+  mapBackendFindingToCanonical,
+  deserializeBackendFieldsToDeclarations,
+} from "./inspections";
+import { apiClient, ApiClientError } from "./client";
 
 export interface ReportFilterParams {
   searchQuery?: string;
 }
 
-export async function getReports(params?: ReportFilterParams): Promise<VerificationReportData[]> {
-  await new Promise((resolve) => setTimeout(resolve, 40));
-
-  let results = [...MOCK_REPORTS];
-
-  if (params?.searchQuery) {
-    const q = params.searchQuery.toLowerCase().trim();
-    results = results.filter(
-      (r) =>
-        r.reportNumber.toLowerCase().includes(q) ||
-        r.inspectionId.toLowerCase().includes(q) ||
-        r.commodityName.toLowerCase().includes(q) ||
-        (r.brandName && r.brandName.toLowerCase().includes(q)) ||
-        r.manufacturerOrPacker.toLowerCase().includes(q)
-    );
-  }
-
-  return results;
+export interface BackendReportDataResponse {
+  inspection: any;
+  extracted_fields: any[];
+  corrections: any[];
+  findings: any[];
+  final_result: any | null;
 }
 
-export async function getReportById(id: string): Promise<VerificationReportData | null> {
-  await new Promise((resolve) => setTimeout(resolve, 30));
-  const found = findReportById(id);
-  if (found) return { ...found };
+/**
+ * Normalizes backend report-data aggregate into canonical frontend VerificationReportData.
+ * Scoped strictly to the requested inspection with no cross-inspection contamination.
+ */
+export function mapBackendReportDataToVerificationReport(
+  data: BackendReportDataResponse
+): VerificationReportData {
+  const { inspection, extracted_fields, corrections, findings, final_result } = data;
+  const shortId = (inspection?.id || "REPORT").substring(0, 8).toUpperCase();
+  const dateStr = inspection?.created_at || new Date().toISOString();
 
-  // If report not pre-seeded in MOCK_REPORTS, try generating from stored inspection record
-  const inspection = await getInspectionById(id);
-  if (inspection) {
-    return {
-      reportId: `rep_${inspection.id}`,
-      reportNumber: `LM-DEL-2026-0${Math.floor(100 + Math.random() * 900)}`,
-      inspectionId: inspection.id,
-      inspectionNumber: inspection.inspectionNumber,
-      generatedAt: new Date().toISOString(),
-      generatedBy: inspection.inspectorName,
-      statutoryAct: "Legal Metrology Act, 2009 & Packaged Commodities Rules, 2011",
-      commodityName: inspection.commodity?.commodityName || inspection.product,
-      brandName: inspection.commodity?.brandName,
-      manufacturerOrPacker: inspection.commodity?.manufacturerName || inspection.company,
-      overallResult: inspection.overallResult || "PASS",
-      findings: inspection.findings || [],
-      extractedDeclarations: inspection.extractedDeclarations!,
-      signoff: {
-        officerId: inspection.inspectorId,
-        officerName: inspection.inspectorName,
-        designation: "Legal Metrology Inspector",
-        badgeNumber: "LM-DEL-4821",
-        signedAt: new Date().toISOString(),
-        digitalSignatureHash: "SHA256:7b1d4ef26a9c339a11005b6e4d28f89a9c1e0a2b8e3a7c6f",
-      },
-      documentHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    };
+  const extractedDeclarations =
+    extracted_fields && extracted_fields.length > 0
+      ? deserializeBackendFieldsToDeclarations(extracted_fields, inspection.product_type, corrections)
+      : undefined;
+
+  const canonicalFindings: Finding[] = (findings || []).map((f: any) =>
+    mapBackendFindingToCanonical(f, inspection.id, inspection.image_path, dateStr)
+  );
+
+  const backendStatus = final_result?.status || inspection.status;
+  const overallResult = toFrontendOverallResult(backendStatus);
+
+  const commodityName =
+    extractedDeclarations?.commodityName?.value || inspection.product_type || "Packaged Commodity";
+  const manufacturerOrPacker =
+    extractedDeclarations?.manufacturerOrPacker?.value?.name || inspection.company || "Manufacturer";
+
+  return {
+    reportId: `rep_${inspection.id}`,
+    reportNumber: `LM-${shortId}-2026`,
+    inspectionId: inspection.id,
+    inspectionNumber: `INS-${shortId}`,
+    generatedAt: inspection.updated_at || dateStr,
+    generatedBy: inspection.inspector_id || "Legal Metrology Inspector",
+    statutoryAct: "Legal Metrology Act, 2009 & Packaged Commodities Rules, 2011",
+    commodityName,
+    manufacturerOrPacker,
+    overallResult,
+    findings: canonicalFindings,
+    extractedDeclarations: extractedDeclarations || ({} as any),
+    documentHash: `SHA256:${inspection.id.replace(/-/g, "").substring(0, 32)}`,
+    company: manufacturerOrPacker,
+    product: commodityName,
+    inspectionDate: dateStr,
+    location: "",
+    inspector: inspection.inspector_id || "Legal Metrology Inspector",
+    signoff: {
+      officerId: inspection.inspector_id || "",
+      officerName: inspection.inspector_id || "Legal Metrology Inspector",
+      designation: "Legal Metrology Inspector",
+      badgeNumber: `LM-${shortId}`,
+      signedAt: inspection.updated_at || dateStr,
+    },
+  };
+}
+
+/**
+ * Fetch all statutory verification reports derived strictly from real inspection records in Supabase.
+ */
+export async function getReports(params?: ReportFilterParams): Promise<VerificationReportData[]> {
+  try {
+    const inspections = await getInspections();
+    let results: VerificationReportData[] = inspections.map((insp) => {
+      const shortId = insp.id.substring(0, 8).toUpperCase();
+      const dateStr = insp.inspectionDate || insp.createdAt;
+      return {
+        reportId: `rep_${insp.id}`,
+        reportNumber: `LM-${shortId}-2026`,
+        inspectionId: insp.id,
+        inspectionNumber: insp.inspectionNumber,
+        generatedAt: insp.timestamps.completedAt || insp.updatedAt || dateStr,
+        generatedBy: insp.inspectorName || insp.inspector || "Legal Metrology Inspector",
+        statutoryAct: "Legal Metrology Act, 2009 & Packaged Commodities Rules, 2011",
+        commodityName: insp.product || insp.commodity?.commodityName || "Packaged Commodity",
+        brandName: insp.commodity?.brandName,
+        manufacturerOrPacker: insp.company || insp.commodity?.manufacturerName || "Manufacturer",
+        overallResult: insp.overallResult || "PASS",
+        findings: insp.findings || [],
+        extractedDeclarations: insp.extractedDeclarations || ({} as any),
+        company: insp.company || insp.commodity?.manufacturerName || "Manufacturer",
+        product: insp.product || insp.commodity?.commodityName || "Packaged Commodity",
+        inspectionDate: dateStr,
+        location: insp.location || "",
+        inspector: insp.inspector || insp.inspectorName || "Legal Metrology Inspector",
+        signoff: {
+          officerId: insp.inspectorId || insp.inspector || "",
+          officerName: insp.inspectorName || insp.inspector || "Legal Metrology Inspector",
+          designation: "Legal Metrology Inspector",
+          badgeNumber: `LM-${shortId}`,
+          signedAt: insp.timestamps.completedAt || insp.updatedAt || dateStr,
+        },
+        documentHash: `SHA256:${insp.id.replace(/-/g, "").substring(0, 32)}`,
+      };
+    });
+
+    if (params?.searchQuery) {
+      const q = params.searchQuery.toLowerCase().trim();
+      results = results.filter(
+        (r) =>
+          r.reportNumber.toLowerCase().includes(q) ||
+          r.inspectionId.toLowerCase().includes(q) ||
+          r.commodityName.toLowerCase().includes(q) ||
+          (r.brandName && r.brandName.toLowerCase().includes(q)) ||
+          r.manufacturerOrPacker.toLowerCase().includes(q) ||
+          (r.company && r.company.toLowerCase().includes(q)) ||
+          (r.product && r.product.toLowerCase().includes(q))
+      );
+    }
+
+    return results;
+  } catch (err) {
+    console.error("Failed to fetch real reports list:", err);
+    return [];
+  }
+}
+
+/**
+ * Fetch report data by inspection ID or report ID from real backend GET /api/inspections/[id]/report-data.
+ * Handles both plain UUID and 'rep_<UUID>' format.
+ * Never silently substitutes mock data for real inspection IDs.
+ */
+export async function getReportById(id: string): Promise<VerificationReportData | null> {
+  const cleanId = id.startsWith("rep_") ? id.replace(/^rep_/, "") : id;
+
+  // 1. Attempt to fetch real aggregate from backend GET /api/inspections/[id]/report-data
+  try {
+    const res = await apiClient.get<BackendReportDataResponse>(`/api/inspections/${cleanId}/report-data`);
+    if (res && res.inspection) {
+      return mapBackendReportDataToVerificationReport(res);
+    }
+  } catch (err) {
+    if (!(err instanceof ApiClientError && err.status === 404)) {
+      console.warn(`Failed to fetch report-data for ${cleanId} from backend:`, err);
+    }
   }
 
+  // 2. If report-data endpoint returns 404, check if the inspection record itself exists in DB
+  try {
+    const inspection = await getInspectionById(cleanId);
+    if (inspection) {
+      const shortId = inspection.id.substring(0, 8).toUpperCase();
+      const dateStr = inspection.inspectionDate || inspection.createdAt;
+      return {
+        reportId: `rep_${inspection.id}`,
+        reportNumber: `LM-${shortId}-2026`,
+        inspectionId: inspection.id,
+        inspectionNumber: inspection.inspectionNumber,
+        generatedAt: inspection.timestamps.completedAt || inspection.updatedAt || dateStr,
+        generatedBy: inspection.inspectorName || inspection.inspector || "Legal Metrology Inspector",
+        statutoryAct: "Legal Metrology Act, 2009 & Packaged Commodities Rules, 2011",
+        commodityName: inspection.commodity?.commodityName || inspection.product,
+        brandName: inspection.commodity?.brandName,
+        manufacturerOrPacker:
+          inspection.commodity?.manufacturerName || inspection.company || "Manufacturer",
+        overallResult: inspection.overallResult || "PASS",
+        findings: inspection.findings || [],
+        extractedDeclarations: inspection.extractedDeclarations || ({} as any),
+        signoff: {
+          officerId: inspection.inspectorId,
+          officerName: inspection.inspectorName || inspection.inspector || "Legal Metrology Inspector",
+          designation: "Legal Metrology Inspector",
+          badgeNumber: `LM-${shortId}`,
+          signedAt: inspection.timestamps.completedAt || inspection.updatedAt || dateStr,
+        },
+        documentHash: `SHA256:${inspection.id.replace(/-/g, "").substring(0, 32)}`,
+      };
+    }
+  } catch {
+    // Inspection does not exist in DB
+  }
+
+  // 3. Fallback to mock data ONLY for legacy mock demo IDs (e.g., "ins_amul_ghee_001", "rep_001")
+  const isLegacyMock = cleanId.startsWith("ins_") || cleanId.startsWith("rep_") || cleanId.startsWith("INSP-2024-");
+  if (isLegacyMock) {
+    const found = findLegacyMockReportById(cleanId) || findLegacyMockReportById(id);
+    if (found) return { ...found };
+  }
+
+  // 4. For real inspections or UUIDs that do not exist: return null (Honest 404)
   return null;
 }

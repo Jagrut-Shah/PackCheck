@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
-import { ApiResponse, PaginatedApiResponse } from '@/lib/types/common'
+import { ApiResponse } from '@/lib/types/common'
+
+interface UploadedImageInfo {
+  filename: string
+  storage_path: string
+  image_url: string
+}
 
 interface UploadResponse {
   inspection_id: string
   image_url: string
+  image_urls: string[]
+  images: UploadedImageInfo[]
   status: string
 }
 
@@ -23,93 +31,161 @@ interface HistoryResponse {
   offset: number
 }
 
-// ============= POST UPLOAD =============
+// ============= POST CREATE INSPECTION & UPLOAD =============
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const formData = await request.formData()
-    const file = formData.get('file') as File
-    const productType = formData.get('product_type') as string
-    const inspectorId = formData.get('inspector_id') as string
+    const contentType = request.headers.get('content-type') || ''
+    if (!contentType.includes('multipart/form-data') && !contentType.includes('application/x-www-form-urlencoded')) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INVALID_CONTENT_TYPE',
+            message: 'Content-Type must be multipart/form-data'
+          }
+        } as ApiResponse<null>,
+        { status: 400 }
+      )
+    }
 
-    if (!file) {
+    const formData = await request.formData()
+
+    // Collect all uploaded files (supports both single 'file' and multiple 'files' / 'file')
+    const files: File[] = []
+    const multipleFiles = formData.getAll('files') as File[]
+    if (multipleFiles && multipleFiles.length > 0) {
+      for (const f of multipleFiles) {
+        if (f && typeof f !== 'string' && f.size > 0) files.push(f)
+      }
+    }
+    const singleFiles = formData.getAll('file') as File[]
+    if (singleFiles && singleFiles.length > 0) {
+      for (const f of singleFiles) {
+        if (f && typeof f !== 'string' && f.size > 0 && !files.includes(f)) files.push(f)
+      }
+    }
+
+    if (files.length === 0) {
       return NextResponse.json(
         {
           success: false,
           error: {
             code: 'MISSING_FILE',
-            message: 'File is required'
+            message: 'At least one image file is required'
           }
         } as ApiResponse<null>,
         { status: 400 }
       )
     }
 
-    if (file.size > 10 * 1024 * 1024) {
+    // Validate size of each file
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'FILE_TOO_LARGE',
+              message: `File ${file.name} exceeds the 10MB limit`
+            }
+          } as ApiResponse<null>,
+          { status: 400 }
+        )
+      }
+    }
+
+    // Validate inspector_id
+    const inspectorId = (formData.get('inspector_id') as string)?.trim()
+    if (!inspectorId) {
       return NextResponse.json(
         {
           success: false,
           error: {
-            code: 'FILE_TOO_LARGE',
-            message: 'File must be smaller than 10MB'
+            code: 'MISSING_INSPECTOR_ID',
+            message: 'inspector_id is required. Authenticated-user-derived inspector_id will be linked during authentication integration.'
           }
         } as ApiResponse<null>,
         { status: 400 }
       )
     }
 
-    if (!productType || !inspectorId) {
+    // Validate product_type (accepts product_type, category, or commodity_name)
+    const productType = (
+      (formData.get('product_type') as string) ||
+      (formData.get('category') as string) ||
+      (formData.get('commodity_name') as string) ||
+      (formData.get('commodityName') as string)
+    )?.trim()
+
+    if (!productType) {
       return NextResponse.json(
         {
           success: false,
           error: {
             code: 'MISSING_FIELDS',
-            message: 'product_type and inspector_id are required'
+            message: 'product_type (or category/commodity_name) is required'
           }
         } as ApiResponse<null>,
         { status: 400 }
       )
     }
 
-    const timestamp = Date.now()
-    const filename = `${timestamp}-${file.name}`
-    const filePath = `product-images/${filename}`
+    // Upload files to Supabase Storage bucket 'product-images'
+    const storageClient = supabaseAdmin?.storage || supabase.storage
+    const uploadedImages: UploadedImageInfo[] = []
 
-    const { data: storageData, error: storageError } = await supabaseAdmin.storage
-      .from('product-images')
-      .upload(filename, file, {
-        cacheControl: '3600',
-        upsert: false
+    for (const file of files) {
+      const timestamp = Date.now()
+      const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
+      const filename = `${timestamp}-${cleanName}`
+      const filePath = `product-images/${filename}`
+
+      const { error: storageError } = await storageClient
+        .from('product-images')
+        .upload(filename, file, {
+          cacheControl: '3600',
+          upsert: false
+        })
+
+      if (storageError) {
+        console.error('Storage upload error:', storageError)
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'STORAGE_UPLOAD_FAILED',
+              message: `Failed to upload image ${file.name}`,
+              details: storageError.message
+            }
+          } as ApiResponse<null>,
+          { status: 500 }
+        )
+      }
+
+      const { data: publicUrlData } = storageClient
+        .from('product-images')
+        .getPublicUrl(filename)
+
+      uploadedImages.push({
+        filename: file.name,
+        storage_path: filePath,
+        image_url: publicUrlData.publicUrl
       })
-
-    if (storageError) {
-      console.error('Storage upload error:', storageError)
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'STORAGE_UPLOAD_FAILED',
-            message: 'Failed to upload image',
-            details: storageError.message
-          }
-        } as ApiResponse<null>,
-        { status: 500 }
-      )
     }
 
-    const { data: publicUrlData } = supabaseAdmin.storage
-      .from('product-images')
-      .getPublicUrl(filename)
+    const primaryImageUrl = uploadedImages[0].image_url
+    const primaryImagePath = uploadedImages[0].storage_path
 
-    const imageUrl = publicUrlData.publicUrl
-
+    // Insert record into Supabase 'inspections' table
+    // Only existing schema columns are persisted to prevent Postgres column errors
     const { data: inspectionData, error: dbError } = await supabase
       .from('inspections')
       .insert([
         {
           inspector_id: inspectorId,
           product_type: productType,
-          image_url: imageUrl,
-          image_path: filePath,
+          image_url: primaryImageUrl,
+          image_path: primaryImagePath,
           status: 'PENDING',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -138,7 +214,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         success: true,
         data: {
           inspection_id: inspectionData.id,
-          image_url: imageUrl,
+          image_url: primaryImageUrl,
+          image_urls: uploadedImages.map((img) => img.image_url),
+          images: uploadedImages,
           status: 'PENDING'
         } as UploadResponse
       } as ApiResponse<UploadResponse>,
@@ -160,7 +238,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-// ============= GET HISTORY =============
+// ============= GET INSPECTIONS HISTORY =============
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const searchParams = request.nextUrl.searchParams
@@ -169,15 +247,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const status = searchParams.get('status')
 
     let query = supabase.from('inspections').select('*')
+    let countQuery = supabase.from('inspections').select('*', { count: 'exact', head: true })
 
     if (status) {
       query = query.eq('status', status)
+      countQuery = countQuery.eq('status', status)
     }
 
     // Get total count
-    const { count: totalCount } = await supabase
-      .from('inspections')
-      .select('*', { count: 'exact' })
+    const { count: totalCount } = await countQuery
 
     // Get paginated results
     const { data: inspections, error: inspectionError } = await query
@@ -199,12 +277,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       )
     }
 
+    const inspectionList = inspections || []
+
     // Get violation counts for each inspection
     const historyItems: InspectionHistoryItem[] = await Promise.all(
-      inspections.map(async (inspection: any) => {
+      inspectionList.map(async (inspection: any) => {
         const { count: violationCount } = await supabase
           .from('compliance_findings')
-          .select('*', { count: 'exact' })
+          .select('*', { count: 'exact', head: true })
           .eq('inspection_id', inspection.id)
 
         return {

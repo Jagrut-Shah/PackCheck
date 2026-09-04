@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { ApiResponse } from '@/lib/types/common'
+import { ApiResponse, toBackendComplianceStatus } from '@/lib/types/common'
 
 interface FindingInput {
   rule_id: string
@@ -11,7 +11,7 @@ interface FindingInput {
 }
 
 interface ComplianceResultsRequest {
-  status: 'PASS' | 'FAIL' | 'MANUAL_REVIEW'
+  status: 'PASS' | 'FAIL' | 'MANUAL_REVIEW' | 'POTENTIAL_NON_COMPLIANCE'
   findings: FindingInput[]
 }
 
@@ -24,10 +24,24 @@ interface ComplianceResultsResponse {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    const inspectionId = params.id
+    const { id: inspectionId } = await context.params
+
+    if (!inspectionId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INVALID_REQUEST',
+            message: 'Inspection ID is required in URL path'
+          }
+        } as ApiResponse<null>,
+        { status: 400 }
+      )
+    }
+
     const body = (await request.json()) as ComplianceResultsRequest
 
     if (!body.status) {
@@ -97,17 +111,18 @@ export async function POST(
     }
 
     // Insert final result
-    const highSeverityCount = body.findings.filter((f) => f.severity === 'HIGH').length
+    const normalizedStatus = toBackendComplianceStatus(body.status)
+    const highSeverityCount = (body.findings || []).filter((f) => f.severity === 'HIGH').length
 
     const { error: resultError } = await supabase
       .from('final_results')
       .insert([
         {
           inspection_id: inspectionId,
-          status: body.status,
-          total_violations_count: body.findings.length,
+          status: normalizedStatus,
+          total_violations_count: (body.findings || []).length,
           high_severity_count: highSeverityCount,
-          findings_json: body.findings,
+          findings_json: body.findings || [],
           created_at: new Date().toISOString()
         }
       ])
@@ -143,7 +158,7 @@ export async function POST(
         data: {
           message: 'Compliance results stored',
           final_status: body.status,
-          violations: body.findings.length,
+          violations: (body.findings || []).length,
           inspection_id: inspectionId
         } as ComplianceResultsResponse
       } as ApiResponse<ComplianceResultsResponse>,

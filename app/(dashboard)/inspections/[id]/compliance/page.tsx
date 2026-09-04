@@ -10,9 +10,12 @@ import { InspectionStepper } from "@/components/inspections/inspection-stepper";
 import { ComplianceVerdictBanner } from "@/components/compliance/compliance-verdict-banner";
 import { ComplianceFindingCard } from "@/components/compliance/compliance-finding-card";
 import { RuleChecklistItem } from "@/components/compliance/rule-checklist-item";
-import { getInspectionById } from "@/lib/api/inspections";
+import { getInspectionById, storeComplianceResults } from "@/lib/api/inspections";
+import { evaluateCompliance } from "@/lib/compliance";
 import { InspectionRecord } from "@/lib/types/inspection";
 import { MOCK_COMPLIANCE_AMUL_GHEE, MOCK_COMPLIANCE_NUTRIBITE } from "@/mocks/compliance";
+
+import { useToast } from "@/components/common/toast";
 
 interface CompliancePageProps {
   params: Promise<{ id: string }>;
@@ -20,6 +23,7 @@ interface CompliancePageProps {
 
 export default function CompliancePage({ params }: CompliancePageProps) {
   const resolvedParams = use(params);
+  const toast = useToast();
   const inspectionId = resolvedParams.id;
 
   const [inspection, setInspection] = useState<InspectionRecord | null>(null);
@@ -28,11 +32,32 @@ export default function CompliancePage({ params }: CompliancePageProps) {
     async function load() {
       const data = await getInspectionById(inspectionId);
       if (data) {
+        if (!data.complianceEvaluation && data.extractedDeclarations) {
+          try {
+            const evalResult = await evaluateCompliance(data.extractedDeclarations);
+            await storeComplianceResults(data.id, evalResult);
+            data.complianceEvaluation = evalResult;
+
+            if (evalResult.overallResult === "PASS") {
+              toast.success(
+                "Compliance Verification Completed",
+                "Product passed all evaluated checks under Legal Metrology Rules, 2011."
+              );
+            } else if (evalResult.overallResult === "POTENTIAL_NON_COMPLIANCE") {
+              toast.warning(
+                "Statutory Infractions Flagged",
+                "Potential non-compliance detected. Review flagged declarations."
+              );
+            }
+          } catch (e) {
+            console.warn("Could not auto-evaluate compliance:", e);
+          }
+        }
         setInspection(data);
       }
     }
     load();
-  }, [inspectionId]);
+  }, [inspectionId, toast]);
 
   if (!inspection) {
     return (
@@ -42,14 +67,44 @@ export default function CompliancePage({ params }: CompliancePageProps) {
     );
   }
 
+  const isLegacyMock = inspection.id.startsWith("INSP-") || inspection.id === "insp_amul_ghee";
   const compliance =
     inspection.complianceEvaluation ||
-    (inspection.overallResult === "POTENTIAL_NON_COMPLIANCE"
-      ? MOCK_COMPLIANCE_NUTRIBITE
-      : MOCK_COMPLIANCE_AMUL_GHEE);
+    (isLegacyMock
+      ? inspection.overallResult === "POTENTIAL_NON_COMPLIANCE"
+        ? MOCK_COMPLIANCE_NUTRIBITE
+        : MOCK_COMPLIANCE_AMUL_GHEE
+      : null);
+
+  if (!compliance) {
+    return (
+      <div className="flex flex-col gap-6 max-w-5xl mx-auto">
+        <InspectionHeader inspection={inspection} />
+        <InspectionStepper inspectionId={inspection.id} />
+        <Card className="border-[#E2E8F0] bg-white shadow-2xs p-8 text-center space-y-4">
+          <div className="mx-auto size-12 rounded-full bg-[#EFF6FF] flex items-center justify-center text-[#1D4ED8]">
+            <HelpCircle className="size-6" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-[#0F172A]">No Compliance Evaluation Yet</h3>
+            <p className="text-xs text-[#475569] max-w-md mx-auto">
+              Please review the extracted declarations or run the verification pipeline before viewing the statutory compliance evaluation.
+            </p>
+          </div>
+          <div>
+            <Link href={`/inspections/${inspection.id}/review`}>
+              <Button variant="primary" size="md" rightIcon={<ArrowRight className="size-4" />}>
+                Review Extracted Declarations
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   const notApplicableCount =
-    compliance.results.filter((r) => (r.result || r.status) === "NOT_APPLICABLE").length;
+    compliance.results?.filter((r) => (r.result || r.status) === "NOT_APPLICABLE").length || 0;
 
   return (
     <div className="flex flex-col gap-6 max-w-5xl mx-auto">

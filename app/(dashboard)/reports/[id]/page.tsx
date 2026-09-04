@@ -34,10 +34,26 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
     load();
   }, [reportId]);
 
-  if (isLoading || !report) {
+  if (isLoading) {
     return (
       <div className="p-12 text-center text-xs text-[#475569]">
         Loading statutory verification report...
+      </div>
+    );
+  }
+
+  if (!report) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 text-center space-y-4">
+        <h2 className="text-base font-bold text-[#0F172A]">Report Not Found</h2>
+        <p className="text-xs text-[#475569]">
+          No statutory compliance report exists with identifier &quot;{reportId}&quot;.
+        </p>
+        <Link href="/reports">
+          <Button variant="primary" size="sm" leftIcon={<ArrowLeft className="size-3.5" />}>
+            Back to Reports List
+          </Button>
+        </Link>
       </div>
     );
   }

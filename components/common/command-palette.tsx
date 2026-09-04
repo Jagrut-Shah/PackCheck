@@ -14,7 +14,8 @@ import {
   Package,
   CornerDownLeft,
 } from "lucide-react";
-import { MOCK_INSPECTIONS } from "@/mocks/inspections";
+import { getInspections } from "@/lib/api/inspections";
+import { InspectionRecord } from "@/lib/types/inspection";
 import { MOCK_COMPANIES } from "@/mocks/companies";
 
 interface CommandItem {
@@ -147,15 +148,20 @@ export function CommandPalette({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [realInspections, setRealInspections] = useState<InspectionRecord[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Focus input when opened
+  // Focus input and load real inspections when opened
   useEffect(() => {
     if (isOpen) {
       setQuery("");
       setSelectedIndex(0);
       setTimeout(() => inputRef.current?.focus(), 50);
+
+      getInspections()
+        .then((records) => setRealInspections(records))
+        .catch((err) => console.warn("Failed to load inspections for command palette:", err));
     }
   }, [isOpen]);
 
@@ -168,21 +174,22 @@ export function CommandPalette({
       (a) => !q || a.title.toLowerCase().includes(q) || a.subtitle.toLowerCase().includes(q)
     );
 
-    // 2. Inspections
-    const matchedInspections: CommandItem[] = MOCK_INSPECTIONS.filter(
-      (ins) =>
-        !q ||
-        ins.inspectionNumber.toLowerCase().includes(q) ||
-        (ins.product && ins.product.toLowerCase().includes(q)) ||
-        (ins.company && ins.company.toLowerCase().includes(q)) ||
-        (ins.commodity?.commodityName && ins.commodity.commodityName.toLowerCase().includes(q)) ||
-        (ins.commodity?.brandName && ins.commodity.brandName.toLowerCase().includes(q))
-    )
+    // 2. Inspections (from real backend inspections)
+    const matchedInspections: CommandItem[] = realInspections
+      .filter(
+        (ins) =>
+          !q ||
+          ins.inspectionNumber.toLowerCase().includes(q) ||
+          (ins.product && ins.product.toLowerCase().includes(q)) ||
+          (ins.company && ins.company.toLowerCase().includes(q)) ||
+          (ins.commodity?.commodityName && ins.commodity.commodityName.toLowerCase().includes(q)) ||
+          (ins.commodity?.brandName && ins.commodity.brandName.toLowerCase().includes(q))
+      )
       .slice(0, 5)
       .map((ins) => ({
         id: `ins-${ins.id}`,
         title: `${ins.inspectionNumber} — ${ins.product || ins.commodity?.commodityName || "Package Sample"}`,
-        subtitle: `${ins.company || ins.commodity?.manufacturerName || "Surveillance Item"} • ${ins.location}`,
+        subtitle: `${ins.company || ins.commodity?.manufacturerName || "Surveillance Item"} • ${ins.location || "Enforcement Inspection"}`,
         category: "Inspections",
         icon: <Package className="size-4 text-[#1D4ED8]" />,
         href: `/inspections/${ins.id}`,
