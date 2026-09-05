@@ -275,6 +275,7 @@ export function DashboardView() {
                 <TableHead className="text-[11px] font-semibold text-[#475569] text-right">ACTION</TableHead>
               </TableRow>
             </TableHeader>
+
             <TableBody>
               {isLoading ? (
                 <TableRow>
@@ -308,7 +309,7 @@ export function DashboardView() {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs text-[#475569] max-w-[200px] truncate">
+                    <TableCell className="text-xs text-[#475569] max-w-50 truncate">
                       {record.company || record.commodity?.manufacturerName || "—"}
                     </TableCell>
                     <TableCell>

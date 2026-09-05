@@ -217,7 +217,7 @@ export default function InspectionDetailPage({ params }: InspectionDetailPagePro
                           <ImageIcon className="size-6 text-[#94A3B8]" />
                         )}
                       </div>
-                      <span className="text-[10px] font-bold truncate max-w-[110px]">{img.fileName}</span>
+                      <span className="text-[10px] font-bold truncate max-w-27.5">{img.fileName}</span>
                       <span className="text-[9px] text-[#475569] font-mono">{img.angle}</span>
                     </div>
                   ))}

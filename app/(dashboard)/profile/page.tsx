@@ -75,7 +75,7 @@ export default function ProfilePage() {
         <Card className="border-[#E2E8F0] bg-white shadow-2xs md:col-span-1">
           <CardContent className="p-6 flex flex-col items-center text-center">
             <div className="size-20 rounded-full bg-[#EFF6FF] border-2 border-[#BFDBFE] flex items-center justify-center text-xl font-bold text-[#1D4ED8] mb-4">
-              LM
+              {officer.fullName.split(" ").map((n) => n[0]).join("")}
             </div>
             <h3 className="text-sm font-bold text-[#0F172A]">{officer.fullName}</h3>
             <p className="text-xs text-[#475569] mt-0.5">{officer.designation || "Legal Metrology Inspector"}</p>

@@ -19,7 +19,7 @@ export default function NewInspectionPage() {
   const router = useRouter();
   const toast = useToast();
 
-  // Form State
+  // Form State 
   const [commodityName, setCommodityName] = useState("");
   const [brandName, setBrandName] = useState("");
   const [manufacturerName, setManufacturerName] = useState("");
@@ -64,7 +64,6 @@ export default function NewInspectionPage() {
         id: `img_${Date.now()}_${idx}`,
         inspectionId: "pending",
         filename: item.file.name,
-        fileName: item.file.name,
         storagePath: item.previewUrl,
         url: item.previewUrl,
         imageType: item.angle,

@@ -40,10 +40,24 @@ export default function EvidencePage({ params }: EvidencePageProps) {
     );
   }
 
+  // Use real ocrResults when OCR service is integrated.
+  // For now, fall back to mock OCR overlays matched by product name.
+  // NOTE: The IMAGE shown in the viewport is the real Supabase Storage photo.
+  const productHint = (
+    inspection.product ||
+    inspection.commodity?.commodityName ||
+    ""
+  ).toLowerCase();
+
+  const fallbackOcr =
+    productHint.includes("nutribite") || productHint.includes("cookie")
+      ? MOCK_OCR_NUTRIBITE_COOKIES
+      : MOCK_OCR_AMUL_GHEE;
+
   const ocrResults =
-    inspection.ocrResults.length > 0
+    inspection.ocrResults && inspection.ocrResults.length > 0
       ? inspection.ocrResults
-      : [inspection.id.includes("nutribite") ? MOCK_OCR_NUTRIBITE_COOKIES : MOCK_OCR_AMUL_GHEE];
+      : [fallbackOcr];
 
   return (
     <div className="flex flex-col gap-6 max-w-6xl mx-auto">

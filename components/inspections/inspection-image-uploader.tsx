@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { UploadCloud, X, Image as ImageIcon, ArrowUp, ArrowDown, CheckCircle2 } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { UploadCloud, X, Image as ImageIcon, ArrowUp, ArrowDown, AlertCircle } from "lucide-react";
 import { PackageImageAngle } from "@/lib/types/image";
 
 export interface UploadedFileItem {
@@ -10,7 +10,7 @@ export interface UploadedFileItem {
   previewUrl: string;
   angle: PackageImageAngle;
   sizeKb: number;
-  dimensions?: string; // e.g. "2048 x 1536 px"
+  dimensions?: string; // e.g. "2048 × 1536 px"
   qualityStatusPlaceholder: "PASSED" | "PENDING";
 }
 
@@ -32,44 +32,126 @@ const AVAILABLE_ANGLES: { value: PackageImageAngle; label: string }[] = [
   { value: "OTHER", label: "Other Panel" },
 ];
 
+const DEFAULT_ANGLE_SEQUENCE: PackageImageAngle[] = [
+  "PRINCIPAL_DISPLAY_PANEL",
+  "BACK",
+  "MRP_PANEL",
+  "INGREDIENTS_PANEL",
+  "SIDE_LEFT",
+  "SIDE_RIGHT",
+  "TOP",
+  "BOTTOM",
+];
+
+const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15MB
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024 * 1024) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getImageDimensions(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") {
+      resolve("1920 × 1080 px");
+      return;
+    }
+    const tempUrl = URL.createObjectURL(file);
+    const img = new window.Image();
+    img.onload = () => {
+      URL.revokeObjectURL(tempUrl);
+      resolve(`${img.naturalWidth} × ${img.naturalHeight} px`);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(tempUrl);
+      resolve("1920 × 1080 px");
+    };
+    img.src = tempUrl;
+  });
+}
+
 export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = ({
   files,
   onFilesChange,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const trackedObjectUrlsRef = useRef<Set<string>>(new Set());
 
-  const handleFileSelection = (selectedFiles: FileList | null) => {
+  // Revoke all remaining object URLs on component unmount
+  useEffect(() => {
+    const urls = trackedObjectUrlsRef.current;
+    return () => {
+      urls.forEach((url) => {
+        if (url.startsWith("blob:")) {
+          URL.revokeObjectURL(url);
+        }
+      });
+      urls.clear();
+    };
+  }, []);
+
+  const handleFileSelection = async (selectedFiles: FileList | null) => {
     if (!selectedFiles || selectedFiles.length === 0) return;
+    setUploadError(null);
 
-    const newItems: UploadedFileItem[] = Array.from(selectedFiles).map((file, idx) => {
-      const previewUrl = URL.createObjectURL(file);
-      const item: UploadedFileItem = {
-        id: `img_${Date.now()}_${idx}`,
-        file,
-        previewUrl,
-        angle: files.length === 0 && idx === 0 ? "PRINCIPAL_DISPLAY_PANEL" : "OTHER",
-        sizeKb: Math.round(file.size / 1024),
-        dimensions: "1920 × 1080 px", // Default estimation
-        qualityStatusPlaceholder: "PASSED",
-      };
+    const fileList = Array.from(selectedFiles);
+    const validFiles: File[] = [];
+    const oversizedFiles: string[] = [];
 
-      // Attempt to load exact image dimensions
-      if (typeof window !== "undefined") {
-        const img = new window.Image();
-        img.onload = () => {
-          item.dimensions = `${img.naturalWidth} × ${img.naturalHeight} px`;
-          onFilesChange([...files, ...newItems]);
-        };
-        img.src = previewUrl;
+    for (const f of fileList) {
+      if (f.size > MAX_FILE_SIZE_BYTES) {
+        oversizedFiles.push(`${f.name} (${formatFileSize(f.size)})`);
+      } else {
+        validFiles.push(f);
       }
+    }
 
-      return item;
-    });
+    if (oversizedFiles.length > 0) {
+      setUploadError(
+        `The following file(s) exceed the 15MB size limit: ${oversizedFiles.join(", ")}`
+      );
+    }
+
+    if (validFiles.length === 0) return;
+
+    const startIndex = files.length;
+    const newItems: UploadedFileItem[] = await Promise.all(
+      validFiles.map(async (file, idx) => {
+        const previewUrl = URL.createObjectURL(file);
+        trackedObjectUrlsRef.current.add(previewUrl);
+
+        const totalIndex = startIndex + idx;
+        const defaultAngle =
+          totalIndex < DEFAULT_ANGLE_SEQUENCE.length
+            ? DEFAULT_ANGLE_SEQUENCE[totalIndex]
+            : "OTHER";
+
+        const dimensions = await getImageDimensions(file);
+
+        return {
+          id: `img_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`,
+          file,
+          previewUrl,
+          angle: defaultAngle,
+          sizeKb: Math.round(file.size / 1024),
+          dimensions,
+          qualityStatusPlaceholder: "PASSED",
+        };
+      })
+    );
 
     onFilesChange([...files, ...newItems]);
   };
 
   const handleRemove = (id: string) => {
+    const item = files.find((f) => f.id === id);
+    if (item?.previewUrl && item.previewUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(item.previewUrl);
+      trackedObjectUrlsRef.current.delete(item.previewUrl);
+    }
     onFilesChange(files.filter((f) => f.id !== id));
   };
 
@@ -91,6 +173,14 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Upload Warning / Error */}
+      {uploadError && (
+        <div className="flex items-center gap-2 p-3 rounded-lg border border-[#FCA5A5] bg-[#FEE2E2] text-xs text-[#991B1B]">
+          <AlertCircle className="size-4 shrink-0" />
+          <span>{uploadError}</span>
+        </div>
+      )}
+
       {/* Drag & Drop Zone */}
       <div
         onDragOver={(e) => {
@@ -116,7 +206,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
           Drag and drop commodity package photos
         </h3>
         <p className="text-xs text-[#475569] mt-1 max-w-md">
-          Upload any number of clear photographs of the package panels (Front, MRP stamp, barcode, back address).
+          Upload clear photographs of all package panels (Front, MRP stamp, barcode, back address, ingredients).
         </p>
 
         <label className="mt-4 cursor-pointer">
@@ -127,12 +217,12 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
             className="hidden"
             onChange={(e) => handleFileSelection(e.target.files)}
           />
-          <span className="inline-flex items-center justify-center h-9 px-4 rounded-lg bg-gradient-to-b from-[#2563EB] via-[#1D4ED8] to-[#1E40AF] text-white text-xs font-semibold border border-[#1E40AF] shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_1px_3px_rgba(29,78,216,0.3)] hover:from-[#3B82F6] hover:via-[#2563EB] hover:to-[#1D4ED8] hover:shadow-[0_4px_16px_rgba(29,78,216,0.35),inset_0_1px_0_rgba(255,255,255,0.3)] hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-200 cursor-pointer select-none">
+          <span className="inline-flex items-center justify-center h-9 px-4 rounded-lg bg-linear-to-b from-[#2563EB] via-[#1D4ED8] to-[#1E40AF] text-white text-xs font-semibold border border-[#1E40AF] shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_1px_3px_rgba(29,78,216,0.3)] hover:from-[#3B82F6] hover:via-[#2563EB] hover:to-[#1D4ED8] hover:shadow-[0_4px_16px_rgba(29,78,216,0.35),inset_0_1px_0_rgba(255,255,255,0.3)] hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-200 cursor-pointer select-none">
             Browse Files from Device
           </span>
         </label>
         <span className="text-[10px] text-[#94A3B8] mt-2 font-mono">
-          JPEG, PNG, WebP up to 15MB each
+          JPEG, PNG, WebP up to 15MB each (multi-image supported)
         </span>
       </div>
 
@@ -203,7 +293,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
                   </div>
 
                   <div className="flex items-center gap-2 text-[10px] text-[#94A3B8] font-mono">
-                    <span>{item.sizeKb} KB</span>
+                    <span>{formatFileSize(item.file.size)}</span>
                     <span>•</span>
                     <span>{item.dimensions || "Dimensions loading"}</span>
                   </div>
@@ -212,7 +302,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
                     <select
                       value={item.angle}
                       onChange={(e) => handleAngleChange(item.id, e.target.value as PackageImageAngle)}
-                      className="text-[11px] h-6 px-1.5 rounded border border-[#CBD5E1] bg-[#F8FAFC] text-[#0F172A] focus:outline-none focus:ring-1 focus:ring-[#2563EB] flex-1 min-w-0"
+                      className="text-[11px] h-6 px-1.5 rounded border border-[#CBD5E1] bg-[#F8FAFC] text-[#0F172A] focus:outline-none focus:ring-1 focus:ring-[#2563EB] flex-1 min-w-0 font-medium"
                     >
                       {AVAILABLE_ANGLES.map((ang) => (
                         <option key={ang.value} value={ang.value}>
