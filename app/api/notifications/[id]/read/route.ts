@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { ApiResponse } from '@/lib/types/common'
 
-export async function PATCH(request: NextRequest): Promise<NextResponse> {
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+): Promise<NextResponse> {
   try {
+    const { id: inspectionId } = await context.params
     const searchParams = request.nextUrl.searchParams
-    const inspectionId = searchParams.get('id') || searchParams.get('inspection_id')
     const userId = searchParams.get('user_id')
 
     console.log('Marking notification as read:', { inspectionId, userId })
@@ -20,19 +23,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
           }
         } as ApiResponse<null>,
         { status: 401 }
-      )
-    }
-
-    if (!inspectionId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Inspection ID required'
-          }
-        } as ApiResponse<null>,
-        { status: 400 }
       )
     }
 
