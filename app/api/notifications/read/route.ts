@@ -8,17 +8,18 @@ export async function PATCH(
 ): Promise<NextResponse> {
   try {
     const inspectionId = params.id
+    const searchParams = request.nextUrl.searchParams
+    const userId = searchParams.get('user_id')
 
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    console.log('Marking notification as read:', { inspectionId, userId });
 
-    if (authError || !user) {
+    if (!userId) {
       return NextResponse.json(
         {
           success: false,
           error: {
             code: 'AUTH_REQUIRED',
-            message: 'User authentication required'
+            message: 'User ID required'
           }
         } as ApiResponse<null>,
         { status: 401 }
@@ -32,7 +33,7 @@ export async function PATCH(
         viewed_at: new Date().toISOString()
       })
       .eq('id', inspectionId)
-      .eq('inspector_id', user.id)
+      .eq('inspector_id', userId)
 
     if (updateError) {
       console.error('Update error:', updateError)
