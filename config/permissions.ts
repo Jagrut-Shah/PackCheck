@@ -1,0 +1,63 @@
+/**
+ * PackCheck AI - Role-Based Permissions Matrix
+ */
+
+import { UserRole } from "@/lib/types/user";
+
+export type PermissionAction =
+  | "INSPECTION_CREATE"
+  | "INSPECTION_VIEW"
+  | "INSPECTION_OVERRIDE_FIELD"
+  | "INSPECTION_APPROVE_VERDICT"
+  | "REPORT_GENERATE"
+  | "REPORT_SIGN"
+  | "COMPANY_REGISTER"
+  | "RULES_CONFIGURE"
+  | "USER_MANAGE";
+
+const SENIOR_PERMISSIONS: PermissionAction[] = [
+  "INSPECTION_CREATE",
+  "INSPECTION_VIEW",
+  "INSPECTION_OVERRIDE_FIELD",
+  "INSPECTION_APPROVE_VERDICT",
+  "REPORT_GENERATE",
+  "REPORT_SIGN",
+  "COMPANY_REGISTER",
+];
+
+export const ROLE_PERMISSIONS: Record<UserRole, PermissionAction[]> = {
+  INSPECTOR: [
+    "INSPECTION_CREATE",
+    "INSPECTION_VIEW",
+    "INSPECTION_OVERRIDE_FIELD",
+    "REPORT_GENERATE",
+  ],
+  SENIOR_OFFICER: SENIOR_PERMISSIONS,
+  SENIOR_LEGAL_METROLOGY_OFFICER: SENIOR_PERMISSIONS,
+  CONTROLLER: [
+    "INSPECTION_CREATE",
+    "INSPECTION_VIEW",
+    "INSPECTION_OVERRIDE_FIELD",
+    "INSPECTION_APPROVE_VERDICT",
+    "REPORT_GENERATE",
+    "REPORT_SIGN",
+    "COMPANY_REGISTER",
+    "RULES_CONFIGURE",
+    "USER_MANAGE",
+  ],
+  ADMIN: [
+    "INSPECTION_CREATE",
+    "INSPECTION_VIEW",
+    "INSPECTION_OVERRIDE_FIELD",
+    "INSPECTION_APPROVE_VERDICT",
+    "REPORT_GENERATE",
+    "REPORT_SIGN",
+    "COMPANY_REGISTER",
+    "RULES_CONFIGURE",
+    "USER_MANAGE",
+  ],
+};
+
+export function hasPermission(role: UserRole, action: PermissionAction): boolean {
+  return ROLE_PERMISSIONS[role]?.includes(action) ?? false;
+}

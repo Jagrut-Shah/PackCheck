@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* PackCheck AI — Sovereign Sapphire & Obsidian Slate Palette Tokens */
+    --bg-app: #F8FAFC;
+    --bg-sidebar: #F1F5F9;
+    --bg-surface: #FFFFFF;
+
+    --text-primary: #0F172A;
+    --text-secondary: #475569;
+    --text-muted: #94A3B8;
+
+    /* Sovereign Brand Blue System */
+    --brand-primary: #1D4ED8;
+    --brand-hover: #1E40AF;
+    --brand-active: #172554;
+    --brand-light: #EFF6FF;
+    --brand-border: #BFDBFE;
+
+    /* Legacy compatibility aliases mapped to sovereign system */
+    --teal-primary: #1D4ED8;
+    --teal-hover: #1E40AF;
+    --teal-active: #172554;
+    --teal-light: #EFF6FF;
+
+    --border-main: #E2E8F0;
+    --border-subtle: #F1F5F9;
+
+    /* Functional Semantic Status Tokens */
+    /* PASS / Green - Uniquely pops out against the Blue brand */
+    --status-pass-bg: #DCFCE7;
+    --status-pass-text: #15803D;
+    --status-pass-border: #86EFAC;
+
+    /* MANUAL REVIEW / Amber */
+    --status-review-bg: #FEF3C7;
+    --status-review-text: #B45309;
+    --status-review-border: #FCD34D;
+
+    /* NON-COMPLIANCE / Red */
+    --status-fail-bg: #FEE2E2;
+    --status-fail-text: #B91C1C;
+    --status-fail-border: #FCA5A5;
+
+    /* PROCESSING / INFO / Sky Blue */
+    --status-info-bg: #E0F2FE;
+    --status-info-text: #0284C7;
+    --status-info-border: #7DD3FC;
+
+    /* DRAFT / INACTIVE / Neutral Slate */
+    --status-draft-bg: #F1F5F9;
+    --status-draft-text: #64748B;
+    --status-draft-border: #E2E8F0;
+
+    /* Focus & Ring */
+    --ring-color: #2563EB;
+
+    /* Radii Tokens */
+    --radius-input: 8px;
+    --radius-card: 12px;
+    --radius-container: 14px;
+  }
+
+  body {
+    background-color: var(--bg-app);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Custom Utility Classes for Enterprise Design System */
+.bg-app { background-color: var(--bg-app); }
+.bg-sidebar { background-color: var(--bg-sidebar); }
+.bg-surface { background-color: var(--bg-surface); }
+.border-main { border-color: var(--border-main); }
+.border-subtle { border-color: var(--border-subtle); }
+
+.text-heading { color: var(--text-primary); }
+.text-body { color: var(--text-secondary); }
+.text-subtle { color: var(--text-muted); }
+
+/* Focus Ring */
+.focus-ring {
+  outline: none;
+}
+.focus-ring:focus-visible {
+  outline: 2px solid var(--teal-primary);
+  outline-offset: 2px;
+}
+
+/* Subtle Restrained Elevation */
+.hover-lift {
+  transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.hover-lift:hover {
+  transform: translateY(-1px);
+}
+
+/* Optical Inspection & Scanning Laser Animations */
+@keyframes scanBeam {
+  0% {
+    top: 0%;
+    opacity: 0.7;
+  }
+  50% {
+    top: 96%;
+    opacity: 1;
+  }
+  100% {
+    top: 0%;
+    opacity: 0.7;
+  }
+}
+
+.scan-laser-line {
+  animation: scanBeam 2.8s ease-in-out infinite;
+}
+
+/* Judicial Certificate & Report Print Styles */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  header,
+  aside,
+  nav,
+  .no-print,
+  button,
+  [role="navigation"] {
+    display: none !important;
+  }
+
+  .print-page-container {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .print-clean {
+    border: none !important;
+    box-shadow: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
