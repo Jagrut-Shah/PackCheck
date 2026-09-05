@@ -18,8 +18,8 @@ import {
   getInspectionById,
   storeExtractedFields,
   storeComplianceResults,
+  runServerExtraction,
 } from "@/lib/api/inspections";
-import { extractDeclarationsFromOCR } from "@/lib/extraction";
 import { evaluateCompliance } from "@/lib/compliance";
 import { InspectionRecord } from "@/lib/types/inspection";
 import { useToast } from "@/components/common/toast";
@@ -157,7 +157,8 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
             brandName: inspection?.commodity?.brandName,
             manufacturerName: inspection?.company || inspection?.commodity?.manufacturerName,
           };
-          const declarations = await extractDeclarationsFromOCR({} as any, extractionCtx);
+          const rawText = inspection?.ocrResults?.[0]?.rawText || "";
+          const declarations = await runServerExtraction(inspectionId, rawText, extractionCtx);
           if (isCancelled) return;
           await storeExtractedFields(inspectionId, declarations);
           if (isCancelled) return;
@@ -175,7 +176,8 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
             brandName: inspection?.commodity?.brandName,
             manufacturerName: inspection?.company || inspection?.commodity?.manufacturerName,
           };
-          const declarations = await extractDeclarationsFromOCR({} as any, extractionCtx);
+          const rawText = inspection?.ocrResults?.[0]?.rawText || "";
+          const declarations = await runServerExtraction(inspectionId, rawText, extractionCtx);
           const evaluation = await evaluateCompliance(declarations);
           if (isCancelled) return;
           await storeComplianceResults(inspectionId, evaluation);

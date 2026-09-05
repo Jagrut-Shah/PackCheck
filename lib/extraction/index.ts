@@ -8,6 +8,8 @@ import { OCRResult } from "@/lib/types/ocr";
 import { ExtractedDeclarations } from "@/lib/types/extraction";
 import { CONFIDENCE_LEVEL } from "@/lib/types/common";
 import { MOCK_EXTRACTION_AMUL_GHEE, MOCK_EXTRACTION_NUTRIBITE } from "@/mocks/extraction";
+import { parseOCRRawText } from "./parser";
+import { enrichMissingFieldsWithGemini } from "./gemini";
 
 export interface ExtractionContext {
   productName?: string;
@@ -17,123 +19,193 @@ export interface ExtractionContext {
 }
 
 export function createDynamicDeclarations(context?: ExtractionContext): ExtractedDeclarations {
-  const prod = context?.productName?.trim() || "Packaged Commodity";
-  const brand = context?.brandName?.trim() || prod.split(" ")[0] || "Standard";
-  const mfr = context?.manufacturerName?.trim() || `${prod} Producers India Pvt. Ltd.`;
-  const cleanKey = prod.toLowerCase().replace(/[^a-z0-9]/g, "") || "support";
+  const prod = context?.productName?.trim() || "";
 
   return {
     commodityName: {
       value: prod,
       rawValue: prod.toUpperCase(),
-      confidence: 0.98,
-      confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+      confidence: prod ? 0.98 : 0,
+      confidenceLevel: prod ? CONFIDENCE_LEVEL.HIGH : CONFIDENCE_LEVEL.LOW,
     },
     brandName: {
-      value: brand,
-      rawValue: brand.toUpperCase(),
-      confidence: 0.96,
-      confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+      value: context?.brandName?.trim() || "",
+      rawValue: (context?.brandName || "").toUpperCase(),
+      confidence: context?.brandName ? 0.96 : 0,
+      confidenceLevel: context?.brandName ? CONFIDENCE_LEVEL.HIGH : CONFIDENCE_LEVEL.LOW,
     },
     manufacturerOrPacker: {
       value: {
-        name: mfr,
-        address: "Plot 12, Industrial Estate, New Delhi - 110020",
-        pincode: "110020",
+        name: context?.manufacturerName?.trim() || "",
+        address: "",
         role: "MANUFACTURED_AND_PACKED_BY",
-        rawText: `Mfd & Pkd by: ${mfr}, Plot 12, Industrial Estate, New Delhi - 110020`,
+        rawText: "",
       },
-      confidence: 0.94,
-      confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+      confidence: context?.manufacturerName ? 0.94 : 0,
+      confidenceLevel: context?.manufacturerName ? CONFIDENCE_LEVEL.HIGH : CONFIDENCE_LEVEL.LOW,
     },
     netQuantity: {
       value: {
-        declaredQuantity: 1,
-        unit: "N",
-        isStandardUnit: true,
-        rawText: "1 N",
+        declaredQuantity: 0,
+        unit: "",
+        isStandardUnit: false,
+        rawText: "",
       },
-      confidence: 0.97,
-      confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+      confidence: 0,
+      confidenceLevel: CONFIDENCE_LEVEL.LOW,
     },
     manufacturingOrPackingDate: {
       value: {
-        month: 1,
-        year: 2026,
-        formattedText: "01/2026",
+        month: 0,
+        year: 0,
+        formattedText: "",
         declarationType: "MANUFACTURE",
       },
-      confidence: 0.93,
-      confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+      confidence: 0,
+      confidenceLevel: CONFIDENCE_LEVEL.LOW,
     },
     expiryOrBestBeforeDate: {
       value: {
-        formattedText: "Best before 12 months from manufacture",
+        formattedText: "",
         declarationType: "BEST_BEFORE",
       },
-      confidence: 0.91,
-      confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+      confidence: 0,
+      confidenceLevel: CONFIDENCE_LEVEL.LOW,
     },
     mrp: {
       value: {
-        amountInRupees: 100,
-        isInclusiveOfAllTaxes: true,
-        currencySymbol: "₹",
-        rawText: "MRP ₹100.00 (INCL. OF ALL TAXES)",
+        amountInRupees: 0,
+        isInclusiveOfAllTaxes: false,
+        currencySymbol: "",
+        rawText: "",
       },
-      confidence: 0.97,
-      confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+      confidence: 0,
+      confidenceLevel: CONFIDENCE_LEVEL.LOW,
     },
     consumerCare: {
       value: {
-        email: `care@${cleanKey}.in`,
-        telephoneOrMobile: "1800-11-2233",
-        rawText: `Consumer Care: 1800-11-2233 or care@${cleanKey}.in`,
+        rawText: "",
       },
-      confidence: 0.94,
-      confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+      confidence: 0,
+      confidenceLevel: CONFIDENCE_LEVEL.LOW,
     },
     countryOfOrigin: {
-      value: "India",
-      confidence: 0.99,
-      confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+      value: "",
+      confidence: 0,
+      confidenceLevel: CONFIDENCE_LEVEL.LOW,
     },
     unitSalePrice: {
       value: {
-        amountInRupees: 100,
-        unit: "N",
-        rawText: "USP ₹100.00 / N",
-        isDeclared: true,
+        amountInRupees: 0,
+        unit: "",
+        rawText: "",
+        isDeclared: false,
       },
-      confidence: 0.93,
-      confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+      confidence: 0,
+      confidenceLevel: CONFIDENCE_LEVEL.LOW,
     },
     sizesOrDimensions: {
-      value: "Standard Package",
-      confidence: 0.9,
-      confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+      value: "",
+      confidence: 0,
+      confidenceLevel: CONFIDENCE_LEVEL.LOW,
     },
     extractedAt: new Date().toISOString(),
-    modelUsed: "Heuristic Legal Metrology Classifier v1.0",
+    modelUsed: "Legal Metrology OCR Parser v1.0",
   };
 }
 
 export async function extractDeclarationsFromOCR(
-  _ocrResult: OCRResult,
+  ocrResult: OCRResult,
   context?: ExtractionContext
 ): Promise<ExtractedDeclarations> {
   const name = context?.productName?.toLowerCase() || "";
 
-  // If user explicitly created a Ghee commodity or demo
+  // Preserve existing demo mock fast-paths
   if (name.includes("ghee") || name.includes("amul")) {
     return MOCK_EXTRACTION_AMUL_GHEE;
   }
 
-  // If user explicitly created a Cookies commodity or demo
   if (name.includes("cookie") || name.includes("nutribite")) {
     return MOCK_EXTRACTION_NUTRIBITE;
   }
 
-  // For any other user-created commodity (e.g. "j", "Tata Salt", etc.), generate declarations matching that commodity
-  return createDynamicDeclarations(context);
+  const baseDeclarations = createDynamicDeclarations(context);
+  const rawText = ocrResult?.rawText || "";
+
+  // Step 1: Run deterministic parseOCRRawText FIRST
+  const parsed = parseOCRRawText(rawText, context?.productName);
+
+  const initialDeclarations: ExtractedDeclarations = {
+    ...baseDeclarations,
+    commodityName: parsed.commodityName.confidence > 0 ? parsed.commodityName : baseDeclarations.commodityName,
+    manufacturerOrPacker:
+      parsed.manufacturerOrPacker.confidence > 0 ? parsed.manufacturerOrPacker : baseDeclarations.manufacturerOrPacker,
+    netQuantity: parsed.netQuantity,
+    manufacturingOrPackingDate: parsed.manufacturingOrPackingDate,
+    mrp: parsed.mrp,
+    unitSalePrice: parsed.unitSalePrice,
+    consumerCare: parsed.consumerCare,
+    countryOfOrigin: parsed.countryOfOrigin,
+  };
+
+  if (!rawText) {
+    return initialDeclarations;
+  }
+
+  // Step 2: Identify fields with confidence === 0 or < 0.5 requiring enrichment
+  const missingFields: string[] = [];
+  if (initialDeclarations.commodityName.confidence < 0.5) missingFields.push("commodityName");
+  if (initialDeclarations.manufacturerOrPacker.confidence < 0.5) missingFields.push("manufacturerOrPacker");
+  if (initialDeclarations.netQuantity.confidence < 0.5) missingFields.push("netQuantity");
+  if (initialDeclarations.manufacturingOrPackingDate.confidence < 0.5) missingFields.push("manufacturingOrPackingDate");
+  if (initialDeclarations.mrp.confidence < 0.5) missingFields.push("mrp");
+  if (initialDeclarations.consumerCare.confidence < 0.5) missingFields.push("consumerCare");
+  if (!initialDeclarations.countryOfOrigin || initialDeclarations.countryOfOrigin.confidence < 0.5)
+    missingFields.push("countryOfOrigin");
+  if (initialDeclarations.unitSalePrice && initialDeclarations.unitSalePrice.confidence < 0.5)
+    missingFields.push("unitSalePrice");
+
+  // Step 3: If no fields require enrichment, SKIP Gemini completely
+  if (missingFields.length === 0) {
+    return initialDeclarations;
+  }
+
+  // Step 4: Call Gemini ONLY for missing/low-confidence fields
+  const geminiEnriched = await enrichMissingFieldsWithGemini(rawText, missingFields, context?.productName);
+
+  if (!geminiEnriched) {
+    return initialDeclarations;
+  }
+
+  // Step 5: Merge validated Gemini values ONLY into missing/low-confidence fields (NEVER overwrite confidence >= 0.5)
+  const finalDeclarations: ExtractedDeclarations = { ...initialDeclarations };
+
+  if (missingFields.includes("commodityName") && geminiEnriched.commodityName) {
+    finalDeclarations.commodityName = geminiEnriched.commodityName;
+  }
+  if (missingFields.includes("manufacturerOrPacker") && geminiEnriched.manufacturerOrPacker) {
+    finalDeclarations.manufacturerOrPacker = geminiEnriched.manufacturerOrPacker;
+  }
+  if (missingFields.includes("netQuantity") && geminiEnriched.netQuantity) {
+    finalDeclarations.netQuantity = geminiEnriched.netQuantity;
+  }
+  if (missingFields.includes("manufacturingOrPackingDate") && geminiEnriched.manufacturingOrPackingDate) {
+    finalDeclarations.manufacturingOrPackingDate = geminiEnriched.manufacturingOrPackingDate;
+  }
+  if (missingFields.includes("mrp") && geminiEnriched.mrp) {
+    finalDeclarations.mrp = geminiEnriched.mrp;
+  }
+  if (missingFields.includes("consumerCare") && geminiEnriched.consumerCare) {
+    finalDeclarations.consumerCare = geminiEnriched.consumerCare;
+  }
+  if (missingFields.includes("countryOfOrigin") && geminiEnriched.countryOfOrigin) {
+    finalDeclarations.countryOfOrigin = geminiEnriched.countryOfOrigin;
+  }
+  if (missingFields.includes("unitSalePrice") && geminiEnriched.unitSalePrice) {
+    finalDeclarations.unitSalePrice = geminiEnriched.unitSalePrice;
+  }
+
+  finalDeclarations.modelUsed = "Deterministic OCR Parser + Gemini AI 2.5 Flash Hybrid";
+
+  return finalDeclarations;
 }
