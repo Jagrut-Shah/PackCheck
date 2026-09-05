@@ -19,6 +19,7 @@ import {
   toBackendComplianceStatus,
 } from "@/lib/types/common";
 import { ExtractedDeclarations, FieldCorrection } from "@/lib/types/extraction";
+import { ExtractionContext } from "@/lib/extraction";
 import { ComplianceEvaluation, ComplianceRuleResult } from "@/lib/types/compliance";
 import { InspectionImage } from "@/lib/types/image";
 import { Finding } from "@/lib/types/finding";
@@ -878,6 +879,24 @@ export async function updateInspectionStatus(
     overallResult: result ?? existing.overallResult,
     updatedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Executes statutory field extraction on the server via POST /api/inspections/[id]/extract.
+ * Passes actual OCR raw text and context to server without exposing Gemini API keys to client.
+ */
+export async function runServerExtraction(
+  inspectionId: string,
+  rawText: string,
+  context?: ExtractionContext
+): Promise<ExtractedDeclarations> {
+  return await apiClient.post<ExtractedDeclarations>(
+    `/api/inspections/${inspectionId}/extract`,
+    {
+      rawText,
+      context,
+    }
+  );
 }
 
 /**

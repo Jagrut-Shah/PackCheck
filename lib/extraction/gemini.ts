@@ -209,10 +209,10 @@ Return ONLY a valid JSON object strictly adhering to this schema structure (do n
         sourceType: "LLM",
       };
     }
-
     return enriched;
   } catch (error) {
     console.error("[Gemini Extraction Error]:", error);
+    // Fail-safe fallback: return null on network error, API timeout, bad key, or Zod validation error
     return null;
   }
 }
