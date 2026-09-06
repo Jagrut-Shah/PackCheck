@@ -12,7 +12,8 @@ ENV PYTHONUNBUFFERED=1 \
     ENVIRONMENT=production \
     ALLOW_LOCAL_FILE_ACCESS=false \
     FLAGS_use_mkldnn=0 \
-    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True \
+    OCR_SERVICE_API_KEY=a3e7d5678af45055bcdb276fe1c304fff35375ee359373c67aed2234d6487057
 
 # Install required Linux system packages for OpenCV and PaddleOCR inference
 RUN apt-get update && apt-get install -y --no-install-recommends \
