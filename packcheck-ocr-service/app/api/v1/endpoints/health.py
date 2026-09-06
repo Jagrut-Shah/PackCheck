@@ -26,8 +26,8 @@ async def health_check() -> Dict[str, Any]:
             "service": settings.APP_NAME,
             "version": settings.APP_VERSION,
             "environment": settings.ENVIRONMENT,
-            "engine": "PaddleOCR",
-            "engineVersion": settings.PADDLE_OCR_MODEL_VERSION,
+            "engine": "Google Cloud Vision" if settings.OCR_PROVIDER.strip().lower() == "google_vision" else "PaddleOCR",
+            "engineVersion": "DOCUMENT_TEXT_DETECTION" if settings.OCR_PROVIDER.strip().lower() == "google_vision" else settings.PADDLE_OCR_MODEL_VERSION,
             "gpuEnabled": settings.USE_GPU,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }

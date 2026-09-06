@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # OCR Engine & Preprocessor defaults
+    OCR_PROVIDER: str = "paddleocr"
     USE_GPU: bool = False
     PADDLE_OCR_MODEL_VERSION: str = "v2.7.3-PP-OCRv4"
     PADDLE_OCR_LANGUAGES: List[str] = ["en"]

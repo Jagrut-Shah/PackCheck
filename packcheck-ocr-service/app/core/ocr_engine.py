@@ -1,7 +1,7 @@
 """
-PackCheck AI - PaddleOCR Neural Engine Integration Service.
-Encapsulates PaddleOCR initialization, inference execution, and raw detection extraction.
-Uses a dedicated bounded ThreadPoolExecutor to prevent thread explosion under high concurrency.
+PackCheck AI - Configurable OCR engine integration service.
+Supports Google Cloud Vision and the existing PaddleOCR implementation while exposing
+one provider-neutral raw detection contract.
 """
 
 import os
@@ -9,7 +9,7 @@ import time
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import List, Tuple, Optional
+from typing import Callable, List, Tuple, Optional
 import numpy as np
 
 from app.config import settings
@@ -27,23 +27,149 @@ class RawOCRDetection:
 
 @dataclass
 class RawOCRResult:
-    """Aggregated raw detection output returned by PaddleOCR engine."""
+    """Aggregated raw detection output returned by an OCR provider."""
     detections: List[RawOCRDetection] = field(default_factory=list)
     engine_name: str = "PaddleOCR"
     engine_version: str = settings.PADDLE_OCR_MODEL_VERSION
     inference_time_ms: float = 0.0
+    raw_text: Optional[str] = None
+
+
+class GoogleVisionOCRProvider:
+    """Google Cloud Vision document OCR adapter using Application Default Credentials."""
+
+    engine_name = "Google Cloud Vision"
+    engine_version = "DOCUMENT_TEXT_DETECTION"
+
+    def __init__(
+        self,
+        client=None,
+        image_factory: Optional[Callable[[bytes], object]] = None,
+    ):
+        self._client = client
+        self._image_factory = image_factory
+        self._initialized = client is not None and image_factory is not None
+
+    def initialize(self) -> None:
+        """Create the Vision client through ADC, without handling credential contents."""
+        if self._initialized:
+            return
+
+        try:
+            from google.cloud import vision
+
+            self._client = vision.ImageAnnotatorClient()
+            self._image_factory = lambda content: vision.Image(content=content)
+            self._initialized = True
+            logger.info("Google Cloud Vision OCR client initialized.")
+        except Exception as exc:
+            raise OCRExecutionError(
+                message=f"Google Cloud Vision failed to initialize: {exc}",
+                details={"provider": "google_vision"},
+            ) from exc
+
+    @staticmethod
+    def _vertices_to_polygon(bounding_box) -> List[Tuple[float, float]]:
+        vertices = getattr(bounding_box, "vertices", []) or []
+        return [
+            (float(getattr(vertex, "x", 0) or 0), float(getattr(vertex, "y", 0) or 0))
+            for vertex in vertices
+        ]
+
+    @staticmethod
+    def _word_text(word) -> str:
+        symbols = getattr(word, "symbols", []) or []
+        return "".join(str(getattr(symbol, "text", "")) for symbol in symbols).strip()
+
+    def _paragraph_detection(self, paragraph) -> Optional[RawOCRDetection]:
+        words = getattr(paragraph, "words", []) or []
+        text = " ".join(filter(None, (self._word_text(word) for word in words))).strip()
+        if not text:
+            return None
+
+        confidence = float(getattr(paragraph, "confidence", 0.0) or 0.0)
+        if confidence <= 0.0 and words:
+            word_confidences = [float(getattr(word, "confidence", 0.0) or 0.0) for word in words]
+            confidence = sum(word_confidences) / len(word_confidences)
+
+        return RawOCRDetection(
+            polygon=self._vertices_to_polygon(getattr(paragraph, "bounding_box", None)),
+            text=text,
+            confidence=round(max(0.0, min(1.0, confidence)), 4),
+        )
+
+    def process_image(self, image: np.ndarray) -> RawOCRResult:
+        """Run DOCUMENT_TEXT_DETECTION and normalize paragraph geometry."""
+        start_time = time.perf_counter()
+
+        if image is None or image.size == 0:
+            raise OCRExecutionError(message="Cannot execute OCR on an empty or None image matrix.")
+        if not self._initialized or self._client is None or self._image_factory is None:
+            raise OCRExecutionError(
+                message="Google Cloud Vision OCR client is not initialized.",
+                details={"provider": "google_vision"},
+            )
+
+        try:
+            import cv2
+
+            encoded_ok, encoded_image = cv2.imencode(".jpg", image)
+            if not encoded_ok:
+                raise OCRExecutionError(message="Google Cloud Vision could not encode the image.")
+
+            response = self._client.document_text_detection(
+                image=self._image_factory(encoded_image.tobytes())
+            )
+            api_error = getattr(response, "error", None)
+            if api_error is not None and getattr(api_error, "message", ""):
+                raise OCRExecutionError(
+                    message=f"Google Cloud Vision OCR failed: {api_error.message}",
+                    details={"provider": "google_vision"},
+                )
+
+            annotation = getattr(response, "full_text_annotation", None)
+            raw_text = str(getattr(annotation, "text", "") or "")
+            detections: List[RawOCRDetection] = []
+
+            for page in getattr(annotation, "pages", []) or []:
+                for block in getattr(page, "blocks", []) or []:
+                    for paragraph in getattr(block, "paragraphs", []) or []:
+                        detection = self._paragraph_detection(paragraph)
+                        if detection:
+                            detections.append(detection)
+
+            elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
+            return RawOCRResult(
+                detections=detections,
+                engine_name=self.engine_name,
+                engine_version=self.engine_version,
+                inference_time_ms=elapsed_ms,
+                raw_text=raw_text,
+            )
+        except OCRExecutionError:
+            raise
+        except Exception as exc:
+            raise OCRExecutionError(
+                message=f"Google Cloud Vision OCR failed: {exc}",
+                details={"provider": "google_vision"},
+            ) from exc
+
+    @property
+    def is_ready(self) -> bool:
+        return self._initialized and self._client is not None
 
 
 class OCREngineManager:
     """
-    Singleton Manager for PaddleOCR Neural Network Engine.
-    Handles model weight loading, GPU/CPU configuration, and bounded thread pool inference.
+    Singleton manager for the configured OCR provider.
+    Handles provider initialization and bounded thread pool inference.
     """
 
     _instance: Optional["OCREngineManager"] = None
     _engine = None
     _initialized: bool = False
     _executor: Optional[ThreadPoolExecutor] = None
+    _google_provider: Optional[GoogleVisionOCRProvider] = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -51,14 +177,32 @@ class OCREngineManager:
             # Create dedicated bounded ThreadPoolExecutor for heavy OCR matrix operations
             cls._instance._executor = ThreadPoolExecutor(
                 max_workers=settings.NUM_OCR_WORKERS,
-                thread_name_prefix="paddle_ocr_worker"
+                thread_name_prefix="ocr_worker"
             )
+            cls._instance._google_provider = GoogleVisionOCRProvider()
         return cls._instance
+
+    @property
+    def provider_name(self) -> str:
+        return settings.OCR_PROVIDER.strip().lower()
 
     def initialize_engine(self, lang: str = "en", use_gpu: bool = settings.USE_GPU) -> None:
         """
-        Pre-warms PaddleOCR neural network model weights into memory during app startup.
+        Initializes the configured OCR provider during app startup.
         """
+        if self.provider_name == "google_vision":
+            if self._google_provider is None:
+                self._google_provider = GoogleVisionOCRProvider()
+            self._google_provider.initialize()
+            self._initialized = True
+            return
+
+        if self.provider_name != "paddleocr":
+            raise OCRExecutionError(
+                message=f"Unsupported OCR provider: {settings.OCR_PROVIDER}",
+                details={"provider": settings.OCR_PROVIDER},
+            )
+
         if self._initialized and self._engine is not None:
             return
 
@@ -113,6 +257,8 @@ class OCREngineManager:
 
     def is_ready(self) -> bool:
         """Returns True if native PaddleOCR model is loaded in memory."""
+        if self.provider_name == "google_vision":
+            return self._google_provider is not None and self._google_provider.is_ready
         return self._initialized and self._engine is not None
 
     def process_image(self, image: np.ndarray, lang: str = "en") -> RawOCRResult:
@@ -121,6 +267,17 @@ class OCREngineManager:
         Processes an OpenCV BGR numpy matrix and returns structured RawOCRResult.
         """
         start_time = time.perf_counter()
+
+        if self.provider_name == "google_vision":
+            if self._google_provider is None:
+                self._google_provider = GoogleVisionOCRProvider()
+            return self._google_provider.process_image(image)
+
+        if self.provider_name != "paddleocr":
+            raise OCRExecutionError(
+                message=f"Unsupported OCR provider: {settings.OCR_PROVIDER}",
+                details={"provider": settings.OCR_PROVIDER},
+            )
 
         if image is None or image.size == 0:
             raise OCRExecutionError(

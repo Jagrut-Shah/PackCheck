@@ -1,6 +1,6 @@
 """
-PackCheck AI - PaddleOCR Microservice Entrypoint.
-FastAPI Web Application configured for high-performance computer vision inference.
+PackCheck AI - OCR Microservice Entrypoint.
+FastAPI web application configured for provider-selectable OCR inference.
 """
 
 from contextlib import asynccontextmanager
@@ -34,10 +34,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         f"Starting {settings.APP_NAME} v{settings.APP_VERSION} "
         f"in [{settings.ENVIRONMENT.upper()}] environment..."
     )
-    logger.info(f"Engine configuration: PaddleOCR {settings.PADDLE_OCR_MODEL_VERSION} (GPU Enabled: {settings.USE_GPU})")
+    logger.info(f"Engine configuration: {settings.OCR_PROVIDER} (GPU Enabled: {settings.USE_GPU})")
     logger.info("Initializing neural network inference runtime...")
 
-    # Pre-warm PaddleOCR model weights
+    # Initialize only the configured OCR provider.
     ocr_engine.initialize_engine()
 
     # Ready for traffic
@@ -55,7 +55,7 @@ def create_application() -> FastAPI:
     """Factory function creating and configuring the FastAPI application instance."""
     app = FastAPI(
         title="PackCheck AI - OCR Microservice",
-        description="High-performance optical character recognition API powered by PaddleOCR and OpenCV.",
+        description="High-performance optical character recognition API powered by the configured OCR provider and OpenCV.",
         version=settings.APP_VERSION,
         debug=settings.DEBUG,
         lifespan=lifespan,

@@ -1,11 +1,10 @@
 """
 PackCheck AI - OCR Postprocessor & Result Mapper Service.
-Transforms raw PaddleOCR output and scale factors into the canonical TypeScript-compatible
-OCRResponse and OCRResult Pydantic schema contracts defined in lib/types/ocr.ts.
+Transforms provider-neutral OCR detections and scale factors into the canonical
+TypeScript-compatible OCRResponse and OCRResult Pydantic schema contracts.
 """
 
 import re
-import time
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
@@ -19,7 +18,6 @@ from app.schemas.common import (
 from app.schemas.response import (
     OCRTextItem,
     OCRTextBlock,
-    OCRResponse,
     OCRResult,
 )
 from app.utils.logger import logger
@@ -101,10 +99,8 @@ class PostprocessorService:
         processing_time_ms: Optional[float] = None
     ) -> OCRResult:
         """
-        Main Mapping Function: Converts raw PaddleOCR detection lists and scale factors
-        into a fully populated, contract-compliant OCRResult Pydantic model.
+        Main mapping function for provider-neutral detections and scale factors.
         """
-        start_time = time.perf_counter()
 
         detections = raw_ocr_result.detections or []
         detected_text_items: List[OCRTextItem] = []
@@ -156,7 +152,7 @@ class PostprocessorService:
             blocks.append(text_block)
 
         # Compute concatenated rawText
-        raw_text = "\n".join(raw_text_lines)
+        raw_text = raw_ocr_result.raw_text if raw_ocr_result.raw_text is not None else "\n".join(raw_text_lines)
 
         # Compute overall confidence average
         item_count = len(detected_text_items)
