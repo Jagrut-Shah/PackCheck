@@ -368,66 +368,95 @@ export function parseManufacturingOrPackingDate(rawText: string): ExtractedField
   const mfgKeywordRegex = /(?:mfg|mfd|manufactur)/i;
   const pkdKeywordRegex = /(?:pkd|packed|packing)/i;
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const nextLine = lines[i + 1] || "";
     const isMfg = mfgKeywordRegex.test(line);
     const isPkd = pkdKeywordRegex.test(line);
 
     if (isMfg || isPkd) {
-      const matchNum = line.match(dateNumericRegex);
-      if (matchNum) {
-        const month = parseInt(matchNum[1], 10);
-        let year = parseInt(matchNum[2], 10);
-        if (year < 100) year += 2000;
+      // Check current line first, then adjacent line if keyword was on its own line
+      for (const candidate of [line, nextLine]) {
+        const matchNum = candidate.match(dateNumericRegex);
+        if (matchNum) {
+          const month = parseInt(matchNum[1], 10);
+          let year = parseInt(matchNum[2], 10);
+          if (year < 100) year += 2000;
 
-        const formattedText = `${String(month).padStart(2, "0")}/${year}`;
-        const declarationType = isPkd ? "PACKING" : "MANUFACTURE";
+          const formattedText = `${String(month).padStart(2, "0")}/${year}`;
+          const declarationType = isPkd ? "PACKING" : "MANUFACTURE";
 
-        return {
-          field: "manufacturingOrPackingDate",
-          value: {
-            month,
-            year,
-            formattedText,
-            declarationType,
-          },
-          rawValue: line.trim(),
-          confidence: 0.93,
-          confidenceLevel: CONFIDENCE_LEVEL.HIGH,
-          sourceType: "OCR_TEXT",
-        };
-      }
+          return {
+            field: "manufacturingOrPackingDate",
+            value: {
+              month,
+              year,
+              formattedText,
+              declarationType,
+            },
+            rawValue: `${line} ${candidate !== line ? candidate : ""}`.trim(),
+            confidence: 0.93,
+            confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+            sourceType: "OCR_TEXT",
+          };
+        }
 
-      const matchName = line.match(dateMonthNameRegex);
-      if (matchName) {
-        const month = MONTH_NAMES[matchName[1].toLowerCase()] || 1;
-        let year = parseInt(matchName[2], 10);
-        if (year < 100) year += 2000;
+        const matchName = candidate.match(dateMonthNameRegex);
+        if (matchName) {
+          const month = MONTH_NAMES[matchName[1].toLowerCase()] || 1;
+          let year = parseInt(matchName[2], 10);
+          if (year < 100) year += 2000;
 
-        const formattedText = `${String(month).padStart(2, "0")}/${year}`;
-        const declarationType = isPkd ? "PACKING" : "MANUFACTURE";
+          const formattedText = `${String(month).padStart(2, "0")}/${year}`;
+          const declarationType = isPkd ? "PACKING" : "MANUFACTURE";
 
-        return {
-          field: "manufacturingOrPackingDate",
-          value: {
-            month,
-            year,
-            formattedText,
-            declarationType,
-          },
-          rawValue: line.trim(),
-          confidence: 0.9,
-          confidenceLevel: CONFIDENCE_LEVEL.HIGH,
-          sourceType: "OCR_TEXT",
-        };
+          return {
+            field: "manufacturingOrPackingDate",
+            value: {
+              month,
+              year,
+              formattedText,
+              declarationType,
+            },
+            rawValue: `${line} ${candidate !== line ? candidate : ""}`.trim(),
+            confidence: 0.92,
+            confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+            sourceType: "OCR_TEXT",
+          };
+        }
       }
     }
   }
 
+  // Pass 2: Any line matching date format (month name or numeric)
   for (const line of lines) {
     const matchNum = line.match(dateNumericRegex);
     if (matchNum) {
       const month = parseInt(matchNum[1], 10);
       let year = parseInt(matchNum[2], 10);
+      if (year < 100) year += 2000;
+
+      const formattedText = `${String(month).padStart(2, "0")}/${year}`;
+
+      return {
+        field: "manufacturingOrPackingDate",
+        value: {
+          month,
+          year,
+          formattedText,
+          declarationType: "MANUFACTURE",
+        },
+        rawValue: line.trim(),
+        confidence: 0.8,
+        confidenceLevel: CONFIDENCE_LEVEL.MEDIUM,
+        sourceType: "OCR_TEXT",
+      };
+    }
+
+    const matchName = line.match(dateMonthNameRegex);
+    if (matchName) {
+      const month = MONTH_NAMES[matchName[1].toLowerCase()] || 1;
+      let year = parseInt(matchName[2], 10);
       if (year < 100) year += 2000;
 
       const formattedText = `${String(month).padStart(2, "0")}/${year}`;
