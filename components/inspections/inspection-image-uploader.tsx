@@ -149,9 +149,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
 
   // DOM Refs
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const replaceFileInputRef = useRef<HTMLInputElement | null>(null);
-  const mobileCameraInputRef = useRef<HTMLInputElement | null>(null);
   const trackedObjectUrlsRef = useRef<Set<string>>(new Set());
 
   // Check for camera devices on mount
@@ -330,7 +328,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
     }
   };
 
-  const confirmCapturedPhoto = async () => {
+  const confirmCapturedPhoto = () => {
     if (!capturedBlob) return;
 
     const angleHint = targetSlotId
@@ -343,9 +341,9 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
     closeCameraModal();
 
     if (slotToUpdate) {
-      await handleReplaceSlotFile(slotToUpdate, photoFile, true);
+      handleReplaceSlotFile(slotToUpdate, photoFile, true);
     } else {
-      await addNewFiles([photoFile], true);
+      addNewFiles([photoFile], true);
     }
   };
 
@@ -392,62 +390,61 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
   // ADDING NEW FILES (Device or Camera)
   // ==========================================================================
 
-  const addNewFiles = async (
-    validFiles: File[],
-    isCamera: boolean = false
-  ) => {
+  const addNewFiles = (validFiles: File[], isCamera: boolean = false) => {
     const currentFiles = filesRef.current;
     const startIndex = currentFiles.length;
 
-    const newItems: UploadedFileItem[] = await Promise.all(
-      validFiles.map(async (file, idx) => {
-        const previewUrl = URL.createObjectURL(file);
-        trackedObjectUrlsRef.current.add(previewUrl);
+    // Build new items synchronously so UI updates immediately
+    const newItems: UploadedFileItem[] = validFiles.map((file, idx) => {
+      const previewUrl = URL.createObjectURL(file);
+      trackedObjectUrlsRef.current.add(previewUrl);
 
-        const totalIndex = startIndex + idx;
-        const defaultAngle =
-          totalIndex < DEFAULT_ANGLE_SEQUENCE.length
-            ? DEFAULT_ANGLE_SEQUENCE[totalIndex]
-            : "OTHER";
+      const totalIndex = startIndex + idx;
+      const defaultAngle =
+        totalIndex < DEFAULT_ANGLE_SEQUENCE.length
+          ? DEFAULT_ANGLE_SEQUENCE[totalIndex]
+          : "OTHER";
 
-        const dimensions = await getImageDimensions(file);
+      return {
+        id: `img_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`,
+        file,
+        previewUrl,
+        angle: defaultAngle,
+        sizeKb: Math.round(file.size / 1024),
+        dimensions: undefined,
+        qualityStatus: "CHECKING" as const, // Strict flow: never PASSED immediately
+        qualityScore: 0,
+        qualityReasons: [],
+        isCameraCapture: isCamera,
+        qualityStatusPlaceholder: "PENDING" as const,
+      };
+    });
 
-        return {
-          id: `img_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`,
-          file,
-          previewUrl,
-          angle: defaultAngle,
-          sizeKb: Math.round(file.size / 1024),
-          dimensions,
-          qualityStatus: "CHECKING" as const, // Strict flow: never PASSED immediately
-          qualityScore: 0,
-          qualityReasons: [],
-          isCameraCapture: isCamera,
-          qualityStatusPlaceholder: "PENDING",
-        };
-      })
-    );
-
-    // Immediately update files using synchronized ref
+    // Immediately render items in UI in "CHECKING" state!
     const updatedFiles = [...filesRef.current, ...newItems];
     updateFiles(updatedFiles);
 
-    // Asynchronously run real image quality analysis on each new file
+    // Concurrently fetch dimensions and quality analysis
     for (const item of newItems) {
+      getImageDimensions(item.file).then((dims) => {
+        const next = filesRef.current.map((f) =>
+          f.id === item.id ? { ...f, dimensions: dims } : f
+        );
+        updateFiles(next);
+      });
+
       runQualityEvaluation(item.id, item.file);
     }
   };
 
-  const handleDeviceFileSelection = async (selectedFiles: FileList | null) => {
+  const handleDeviceFileSelection = (selectedFiles: FileList | File[] | null) => {
     if (!selectedFiles || selectedFiles.length === 0) return;
     setUploadError(null);
 
-    // Reset input so re-selecting the exact same file fires onChange again
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-
+    // Clone files out of the live FileList immediately before any browser reset
     const fileList = Array.from(selectedFiles);
+    if (fileList.length === 0) return;
+
     const validFiles: File[] = [];
     const oversizedFiles: string[] = [];
 
@@ -466,7 +463,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
     }
 
     if (validFiles.length > 0) {
-      await addNewFiles(validFiles, false);
+      addNewFiles(validFiles, false);
     }
   };
 
@@ -474,7 +471,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
   // RETAKE & REPLACE WORKFLOW (Slot-Specific)
   // ==========================================================================
 
-  const handleReplaceSlotFile = async (
+  const handleReplaceSlotFile = (
     slotId: string,
     newFile: File,
     isCamera: boolean = false
@@ -492,7 +489,6 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
     const preservedAngle = existing.angle;
     const newPreviewUrl = URL.createObjectURL(newFile);
     trackedObjectUrlsRef.current.add(newPreviewUrl);
-    const newDimensions = await getImageDimensions(newFile);
 
     // Immediately replace slot with status CHECKING (never immediate PASSED)
     const updatedFiles: UploadedFileItem[] = filesRef.current.map((item) => {
@@ -503,17 +499,25 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
         previewUrl: newPreviewUrl,
         angle: preservedAngle, // PANEL PRESERVED!
         sizeKb: Math.round(newFile.size / 1024),
-        dimensions: newDimensions,
+        dimensions: undefined,
         qualityStatus: "CHECKING" as const,
         qualityScore: 0,
         qualityReasons: [],
         qualityMetrics: undefined,
-        qualityStatusPlaceholder: "PENDING",
+        qualityStatusPlaceholder: "PENDING" as const,
         isCameraCapture: isCamera,
       };
     });
 
     updateFiles(updatedFiles);
+
+    // Concurrently fetch dimensions
+    getImageDimensions(newFile).then((dims) => {
+      const next = filesRef.current.map((f) =>
+        f.id === slotId ? { ...f, dimensions: dims } : f
+      );
+      updateFiles(next);
+    });
 
     // Run fresh quality evaluation on the replacement image
     runQualityEvaluation(slotId, newFile);
@@ -525,22 +529,6 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
       replaceFileInputRef.current.value = "";
       replaceFileInputRef.current.click();
     }
-  };
-
-  const handleReplaceFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    const slotId = targetSlotId;
-    if (replaceFileInputRef.current) {
-      replaceFileInputRef.current.value = "";
-    }
-    if (file && slotId) {
-      if (file.size > MAX_FILE_SIZE_BYTES) {
-        setUploadError(`Selected file exceeds 15MB limit: ${formatFileSize(file.size)}`);
-        return;
-      }
-      await handleReplaceSlotFile(slotId, file, false);
-    }
-    setTargetSlotId(null);
   };
 
   // ==========================================================================
@@ -574,33 +562,25 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Hidden standard file picker */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="image/*,image/jpeg,image/png,image/webp"
-        className="hidden"
-        onChange={(e) => handleDeviceFileSelection(e.target.files)}
-      />
-
       {/* Hidden slot replace file picker */}
       <input
         ref={replaceFileInputRef}
         type="file"
         accept="image/*,image/jpeg,image/png,image/webp"
         className="hidden"
-        onChange={handleReplaceFileInputChange}
-      />
-
-      {/* Mobile native camera capture fallback */}
-      <input
-        ref={mobileCameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={(e) => handleDeviceFileSelection(e.target.files)}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          const slotId = targetSlotId;
+          e.target.value = "";
+          if (file && slotId) {
+            if (file.size > MAX_FILE_SIZE_BYTES) {
+              setUploadError(`Selected file exceeds 15MB limit: ${formatFileSize(file.size)}`);
+              return;
+            }
+            handleReplaceSlotFile(slotId, file, false);
+          }
+          setTargetSlotId(null);
+        }}
       />
 
       {/* Upload Warning / Error Alert */}
@@ -664,20 +644,22 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
             <span>Take Photo</span>
           </button>
 
-          {/* Action B: Choose from Device */}
-          <button
-            type="button"
-            onClick={() => {
-              if (fileInputRef.current) {
-                fileInputRef.current.value = "";
-                fileInputRef.current.click();
-              }
-            }}
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-white text-[#0F172A] text-xs font-semibold border border-[#CBD5E1] shadow-2xs hover:bg-[#F8FAFC] hover:border-[#94A3B8] hover:text-[#1D4ED8] active:scale-[0.98] transition-all duration-150 cursor-pointer select-none"
-          >
+          {/* Action B: Choose from Device (Native HTML Label wrapping hidden input) */}
+          <label className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-white text-[#0F172A] text-xs font-semibold border border-[#CBD5E1] shadow-2xs hover:bg-[#F8FAFC] hover:border-[#94A3B8] hover:text-[#1D4ED8] active:scale-[0.98] transition-all duration-150 cursor-pointer select-none">
+            <input
+              type="file"
+              multiple
+              accept="image/*,image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const targetFiles = e.target.files;
+                handleDeviceFileSelection(targetFiles);
+                e.target.value = "";
+              }}
+            />
             <FolderOpen className="size-4 text-[#475569]" />
             <span>Choose from Device</span>
-          </button>
+          </label>
         </div>
 
         <span className="text-[10px] text-[#94A3B8] mt-2 font-mono">
@@ -738,21 +720,25 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
                   <h4 className="text-sm font-bold text-white">Camera Access Error</h4>
                   <p className="text-xs text-[#94A3B8]">{cameraError}</p>
                   <div className="flex flex-col gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        closeCameraModal();
-                        if (targetSlotId) {
-                          triggerSlotDeviceReplacement(targetSlotId);
-                        } else if (fileInputRef.current) {
-                          fileInputRef.current.value = "";
-                          fileInputRef.current.click();
-                        }
-                      }}
-                      className="w-full h-8 px-3 rounded-lg bg-[#2563EB] text-white text-xs font-semibold hover:bg-[#1D4ED8] transition-colors cursor-pointer"
-                    >
-                      Choose from Device Instead
-                    </button>
+                    <label className="w-full inline-flex items-center justify-center h-8 px-3 rounded-lg bg-[#2563EB] text-white text-xs font-semibold hover:bg-[#1D4ED8] transition-colors cursor-pointer">
+                      <input
+                        type="file"
+                        multiple={!targetSlotId}
+                        accept="image/*,image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          const targetFiles = e.target.files;
+                          closeCameraModal();
+                          if (targetSlotId && targetFiles?.[0]) {
+                            handleReplaceSlotFile(targetSlotId, targetFiles[0], false);
+                          } else if (targetFiles) {
+                            handleDeviceFileSelection(targetFiles);
+                          }
+                          e.target.value = "";
+                        }}
+                      />
+                      <span>Choose from Device Instead</span>
+                    </label>
                     <button
                       type="button"
                       onClick={() => startCamera(facingMode)}
@@ -841,21 +827,25 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
                     <span>Capture Photo</span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      closeCameraModal();
-                      if (targetSlotId) {
-                        triggerSlotDeviceReplacement(targetSlotId);
-                      } else if (fileInputRef.current) {
-                        fileInputRef.current.value = "";
-                        fileInputRef.current.click();
-                      }
-                    }}
-                    className="text-xs text-[#94A3B8] hover:text-white underline cursor-pointer"
-                  >
-                    Choose from Device
-                  </button>
+                  <label className="text-xs text-[#94A3B8] hover:text-white underline cursor-pointer">
+                    <input
+                      type="file"
+                      multiple={!targetSlotId}
+                      accept="image/*,image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const targetFiles = e.target.files;
+                        closeCameraModal();
+                        if (targetSlotId && targetFiles?.[0]) {
+                          handleReplaceSlotFile(targetSlotId, targetFiles[0], false);
+                        } else if (targetFiles) {
+                          handleDeviceFileSelection(targetFiles);
+                        }
+                        e.target.value = "";
+                      }}
+                    />
+                    <span>Choose from Device</span>
+                  </label>
                 </>
               ) : (
                 <button
