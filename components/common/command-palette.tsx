@@ -22,13 +22,13 @@ interface CommandItem {
   id: string;
   title: string;
   subtitle?: string;
-  category: "Actions" | "Inspections" | "Companies" | "Statutory Rules";
+  category: "Actions" | "Inspections" | "Companies" | "Inspection Rules";
   icon: React.ReactNode;
   href: string;
   badge?: string;
 }
 
-const STATUTORY_RULES = [
+const INSPECTION_RULES = [
   {
     id: "rule-6-1-a",
     title: "Rule 6(1)(a) — Manufacturer / Packer Details",
@@ -81,7 +81,7 @@ const STATUTORY_RULES = [
   {
     id: "rule-27",
     title: "Rule 27 — Manufacturer / Packer Registration",
-    subtitle: "Statutory registration certificate with State or Central Controller.",
+    subtitle: "Official registration certificate with State or Central Controller.",
     href: "/analytics/rules",
     badge: "Registry",
   },
@@ -90,8 +90,8 @@ const STATUTORY_RULES = [
 const QUICK_ACTIONS = [
   {
     id: "act-new-inspection",
-    title: "Initialize New Inspection",
-    subtitle: "Upload package photos and start verification pipeline",
+    title: "Start New Inspection",
+    subtitle: "Upload package photos and start compliance check",
     category: "Actions" as const,
     icon: <Plus className="size-4 text-[#1D4ED8]" />,
     href: "/inspections/new",
@@ -106,8 +106,8 @@ const QUICK_ACTIONS = [
   },
   {
     id: "act-reports",
-    title: "Statutory Verification Reports",
-    subtitle: "Browse generated judicial reports and compliance certificates",
+    title: "Inspection Reports",
+    subtitle: "Browse generated inspection reports and compliance records",
     category: "Actions" as const,
     icon: <FileText className="size-4 text-[#1D4ED8]" />,
     href: "/reports",
@@ -123,7 +123,7 @@ const QUICK_ACTIONS = [
   {
     id: "act-profile",
     title: "Officer Profile",
-    subtitle: "Department credentials, assigned jurisdiction, and statutory authority",
+    subtitle: "Department credentials, assigned jurisdiction, and enforcement authority",
     category: "Actions" as const,
     icon: <User className="size-4 text-[#1D4ED8]" />,
     href: "/profile",
@@ -208,13 +208,13 @@ export function CommandPalette({
       }));
 
     // 4. Rules
-    const matchedRules: CommandItem[] = STATUTORY_RULES.filter(
+    const matchedRules: CommandItem[] = INSPECTION_RULES.filter(
       (r) => !q || r.title.toLowerCase().includes(q) || r.subtitle.toLowerCase().includes(q)
     ).map((r) => ({
       id: r.id,
       title: r.title,
       subtitle: r.subtitle,
-      category: "Statutory Rules",
+      category: "Inspection Rules",
       icon: <Scale className="size-4 text-[#1D4ED8]" />,
       href: r.href,
       badge: r.badge,

@@ -8,6 +8,27 @@ interface ComplianceFindingCardProps {
   inspectionId: string;
 }
 
+function cleanText(text?: string): string {
+  if (!text) return "";
+  return text
+    .replace(/\bstatutory\s+infraction\(s\)/gi, "compliance issue(s)")
+    .replace(/\bstatutory\s+infractions\b/gi, "compliance issues")
+    .replace(/\bstatutory\s+infraction\b/gi, "compliance issue")
+    .replace(/\binfraction\(s\)/gi, "issue(s)")
+    .replace(/\binfractions\b/gi, "compliance issues")
+    .replace(/\binfraction\b/gi, "compliance issue")
+    .replace(/\bstatutory\s+evaluation\b/gi, "compliance evaluation")
+    .replace(/\bstatutory\s+standards\b/gi, "metrology standards")
+    .replace(/\bstatutory\s+declarations\b/gi, "mandatory declarations")
+    .replace(/\bstatutory\s+declaration\b/gi, "mandatory declaration")
+    .replace(/\bstatutory\s+criteria\b/gi, "compliance criteria")
+    .replace(/\bstatutory\s+verdict\b/gi, "compliance verdict")
+    .replace(/\bstatutory\s+wording\b/gi, "mandatory wording")
+    .replace(/\bstatutory\s+clause\b/gi, "mandatory clause")
+    .replace(/\bstatutory\s+tax\s+notice\b/gi, "mandatory tax notice")
+    .replace(/\bstatutory\b/gi, "legal");
+}
+
 export const ComplianceFindingCard: React.FC<ComplianceFindingCardProps> = ({
   finding,
   inspectionId,
@@ -52,14 +73,14 @@ export const ComplianceFindingCard: React.FC<ComplianceFindingCardProps> = ({
           <AlertTriangle className="size-4 text-[#991B1B] shrink-0 mt-0.5" />
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-xs font-bold text-[#991B1B]">{finding.title}</h3>
+              <h3 className="text-xs font-bold text-[#991B1B]">{cleanText(finding.title)}</h3>
               {getSeverityBadge()}
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white text-[#475569] border border-[#CBD5E1]">
                 {finding.ruleNumber}
               </span>
             </div>
             <p className="text-xs text-[#0F172A] mt-1 leading-relaxed">
-              {finding.description}
+              {cleanText(finding.description)}
             </p>
           </div>
         </div>
@@ -73,16 +94,16 @@ export const ComplianceFindingCard: React.FC<ComplianceFindingCardProps> = ({
         </Link>
       </div>
 
-      {/* Observed vs Statutory Requirement comparison */}
+      {/* Observed vs Legal Requirement comparison */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-lg bg-white border border-[#E2E8F0] text-xs">
         <div>
-          <span className="text-[10px] uppercase font-bold text-[#475569]">Observed Package Declaration</span>
+          <span className="text-[10px] uppercase font-bold text-[#475569]">Observed on Package</span>
           <p className="font-mono text-[#991B1B] font-bold mt-0.5">
             {finding.observedValue || finding.detectedValue || "Not Detected"}
           </p>
         </div>
         <div>
-          <span className="text-[10px] uppercase font-bold text-[#475569]">Statutory Requirement</span>
+          <span className="text-[10px] uppercase font-bold text-[#475569]">Legal Requirement</span>
           <p className="text-[#0F172A] font-medium mt-0.5">
             {finding.expectedRequirement}
           </p>
@@ -94,7 +115,7 @@ export const ComplianceFindingCard: React.FC<ComplianceFindingCardProps> = ({
         {finding.evidence.length > 0 && (
           <span className="flex items-center gap-1">
             <ImageIcon className="size-3" />
-            {finding.evidence.length} photographic bounding box reference(s)
+            {finding.evidence.length} image reference(s)
           </span>
         )}
       </div>

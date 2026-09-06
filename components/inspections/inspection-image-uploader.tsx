@@ -1,8 +1,28 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { UploadCloud, X, Image as ImageIcon, ArrowUp, ArrowDown, AlertCircle } from "lucide-react";
-import { PackageImageAngle } from "@/lib/types/image";
+import {
+  UploadCloud,
+  Camera,
+  FolderOpen,
+  X,
+  Image as ImageIcon,
+  ArrowUp,
+  ArrowDown,
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  RotateCcw,
+  Loader2,
+  RefreshCw,
+  SwitchCamera,
+} from "lucide-react";
+import { PackageImageAngle, ImageQualityMetrics } from "@/lib/types/image";
+import {
+  analyzeImageQuality,
+  ImageQualityAnalysisResult,
+} from "@/lib/image/quality-analyzer";
 
 export interface UploadedFileItem {
   id: string;
@@ -10,8 +30,13 @@ export interface UploadedFileItem {
   previewUrl: string;
   angle: PackageImageAngle;
   sizeKb: number;
-  dimensions?: string; // e.g. "2048 × 1536 px"
-  qualityStatusPlaceholder: "PASSED" | "PENDING";
+  dimensions?: string;
+  qualityStatus: "CHECKING" | "GOOD" | "BORDERLINE" | "POOR" | "UNAVAILABLE";
+  qualityScore: number;
+  qualityReasons: string[];
+  qualityMetrics?: ImageQualityMetrics;
+  qualityStatusPlaceholder?: "PASSED" | "PENDING";
+  isCameraCapture?: boolean;
 }
 
 interface InspectionImageUploaderProps {
@@ -78,9 +103,43 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Camera State
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isCameraInitializing, setIsCameraInitializing] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
+  const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
+
+  // Camera Capture Preview & Confirmation State
+  const [capturedPreviewUrl, setCapturedPreviewUrl] = useState<string | null>(null);
+  const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
+
+  // Target Slot for Retake or Replace (null means adding a new photo)
+  const [targetSlotId, setTargetSlotId] = useState<string | null>(null);
+
+  // DOM Refs
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const replaceFileInputRef = useRef<HTMLInputElement | null>(null);
+  const mobileCameraInputRef = useRef<HTMLInputElement | null>(null);
   const trackedObjectUrlsRef = useRef<Set<string>>(new Set());
 
-  // Revoke all remaining object URLs on component unmount
+  // Check for camera devices on mount
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.mediaDevices?.enumerateDevices) {
+      navigator.mediaDevices
+        .enumerateDevices()
+        .then((devices) => {
+          const videoInputs = devices.filter((d) => d.kind === "videoinput");
+          setHasMultipleCameras(videoInputs.length > 1);
+        })
+        .catch(() => {});
+    }
+  }, []);
+
+  // Cleanup object URLs on unmount
   useEffect(() => {
     const urls = trackedObjectUrlsRef.current;
     return () => {
@@ -90,10 +149,269 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
         }
       });
       urls.clear();
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((t) => t.stop());
+      }
     };
-  }, []);
+  }, [cameraStream]);
 
-  const handleFileSelection = async (selectedFiles: FileList | null) => {
+  // Connect video stream to video element when stream or modal changes
+  useEffect(() => {
+    if (isCameraOpen && cameraStream && videoRef.current && !capturedPreviewUrl) {
+      videoRef.current.srcObject = cameraStream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [isCameraOpen, cameraStream, capturedPreviewUrl]);
+
+  // ==========================================================================
+  // CAMERA WORKFLOW
+  // ==========================================================================
+
+  const startCamera = async (targetFacing: "environment" | "user" = facingMode) => {
+    setCameraError(null);
+    setIsCameraInitializing(true);
+    setCapturedPreviewUrl(null);
+    setCapturedBlob(null);
+
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setCameraError(
+        "Camera access is not supported on this browser. Please choose an image from your device."
+      );
+      setIsCameraInitializing(false);
+      return;
+    }
+
+    try {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((t) => t.stop());
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: targetFacing },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      });
+
+      setCameraStream(stream);
+      setFacingMode(targetFacing);
+      setIsCameraInitializing(false);
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => {});
+      }
+    } catch (err: unknown) {
+      setIsCameraInitializing(false);
+      const errorObj = err as { name?: string; message?: string };
+      console.warn("Camera access failed:", errorObj);
+
+      if (
+        errorObj.name === "NotAllowedError" ||
+        errorObj.name === "PermissionDeniedError"
+      ) {
+        setCameraError(
+          "Camera access was blocked. Please allow camera permissions in your browser or choose a photo from your device."
+        );
+      } else if (
+        errorObj.name === "NotFoundError" ||
+        errorObj.name === "DevicesNotFoundError"
+      ) {
+        setCameraError(
+          "No camera found on this device. Please choose a photo from your device."
+        );
+      } else if (
+        errorObj.name === "NotReadableError" ||
+        errorObj.name === "TrackStartError"
+      ) {
+        setCameraError(
+          "Camera is currently unavailable or in use by another application. Please choose from device."
+        );
+      } else {
+        setCameraError(
+          "Camera access failed. Please check permissions or choose an image from your device."
+        );
+      }
+    }
+  };
+
+  const openCameraModal = (slotId?: string) => {
+    setTargetSlotId(slotId || null);
+    setIsCameraOpen(true);
+    startCamera(facingMode);
+  };
+
+  const toggleCameraFacing = () => {
+    const nextFacing = facingMode === "environment" ? "user" : "environment";
+    startCamera(nextFacing);
+  };
+
+  const closeCameraModal = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((t) => t.stop());
+      setCameraStream(null);
+    }
+    if (capturedPreviewUrl) {
+      URL.revokeObjectURL(capturedPreviewUrl);
+      trackedObjectUrlsRef.current.delete(capturedPreviewUrl);
+      setCapturedPreviewUrl(null);
+    }
+    setCapturedBlob(null);
+    setIsCameraOpen(false);
+    setTargetSlotId(null);
+    setCameraError(null);
+    setIsCameraInitializing(false);
+  };
+
+  const capturePhotoFrame = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        const preview = URL.createObjectURL(blob);
+        trackedObjectUrlsRef.current.add(preview);
+        setCapturedBlob(blob);
+        setCapturedPreviewUrl(preview);
+      },
+      "image/jpeg",
+      0.92
+    );
+  };
+
+  const retakeCapturedFrame = () => {
+    if (capturedPreviewUrl) {
+      URL.revokeObjectURL(capturedPreviewUrl);
+      trackedObjectUrlsRef.current.delete(capturedPreviewUrl);
+    }
+    setCapturedBlob(null);
+    setCapturedPreviewUrl(null);
+    if (videoRef.current && cameraStream) {
+      videoRef.current.play().catch(() => {});
+    }
+  };
+
+  const confirmCapturedPhoto = async () => {
+    if (!capturedBlob) return;
+
+    const angleHint = targetSlotId
+      ? files.find((f) => f.id === targetSlotId)?.angle || "package"
+      : "package";
+    const filename = `camera_${angleHint.toLowerCase()}_${Date.now()}.jpg`;
+    const photoFile = new File([capturedBlob], filename, { type: "image/jpeg" });
+
+    const slotToUpdate = targetSlotId;
+    closeCameraModal();
+
+    if (slotToUpdate) {
+      await handleReplaceSlotFile(slotToUpdate, photoFile, true);
+    } else {
+      await addNewFiles([photoFile], true);
+    }
+  };
+
+  // ==========================================================================
+  // QUALITY EVALUATION RUNNER
+  // ==========================================================================
+
+  const runQualityEvaluation = async (
+    itemId: string,
+    file: File
+  ): Promise<void> => {
+    try {
+      const result: ImageQualityAnalysisResult = await analyzeImageQuality(file);
+
+      onFilesChange(
+        files.map((item) => {
+          if (item.id !== itemId) return item;
+          return {
+            ...item,
+            qualityStatus: result.status,
+            qualityScore: result.score,
+            qualityReasons: result.reasons,
+            qualityMetrics: result.metrics,
+            qualityStatusPlaceholder: result.status === "POOR" ? "PENDING" : "PASSED",
+          };
+        })
+      );
+    } catch (err) {
+      console.error("Quality analysis failed for image:", itemId, err);
+      onFilesChange(
+        files.map((item) => {
+          if (item.id !== itemId) return item;
+          return {
+            ...item,
+            qualityStatus: "UNAVAILABLE",
+            qualityScore: 0,
+            qualityReasons: ["Quality check could not be completed."],
+            qualityStatusPlaceholder: "PENDING",
+          };
+        })
+      );
+    }
+  };
+
+  // ==========================================================================
+  // ADDING NEW FILES (Device or Camera)
+  // ==========================================================================
+
+  const addNewFiles = async (
+    validFiles: File[],
+    isCamera: boolean = false
+  ) => {
+    const startIndex = files.length;
+
+    const newItems: UploadedFileItem[] = await Promise.all(
+      validFiles.map(async (file, idx) => {
+        const previewUrl = URL.createObjectURL(file);
+        trackedObjectUrlsRef.current.add(previewUrl);
+
+        const totalIndex = startIndex + idx;
+        const defaultAngle =
+          totalIndex < DEFAULT_ANGLE_SEQUENCE.length
+            ? DEFAULT_ANGLE_SEQUENCE[totalIndex]
+            : "OTHER";
+
+        const dimensions = await getImageDimensions(file);
+
+        return {
+          id: `img_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`,
+          file,
+          previewUrl,
+          angle: defaultAngle,
+          sizeKb: Math.round(file.size / 1024),
+          dimensions,
+          qualityStatus: "CHECKING" as const, // Strict flow: never PASSED immediately
+          qualityScore: 0,
+          qualityReasons: [],
+          isCameraCapture: isCamera,
+          qualityStatusPlaceholder: "PENDING",
+        };
+      })
+    );
+
+    // Add items immediately to UI in "CHECKING" state
+    const updatedFiles = [...files, ...newItems];
+    onFilesChange(updatedFiles);
+
+    // Asynchronously run real image quality analysis on each new file
+    for (const item of newItems) {
+      runQualityEvaluation(item.id, item.file);
+    }
+  };
+
+  const handleDeviceFileSelection = async (selectedFiles: FileList | null) => {
     if (!selectedFiles || selectedFiles.length === 0) return;
     setUploadError(null);
 
@@ -115,36 +433,84 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
       );
     }
 
-    if (validFiles.length === 0) return;
-
-    const startIndex = files.length;
-    const newItems: UploadedFileItem[] = await Promise.all(
-      validFiles.map(async (file, idx) => {
-        const previewUrl = URL.createObjectURL(file);
-        trackedObjectUrlsRef.current.add(previewUrl);
-
-        const totalIndex = startIndex + idx;
-        const defaultAngle =
-          totalIndex < DEFAULT_ANGLE_SEQUENCE.length
-            ? DEFAULT_ANGLE_SEQUENCE[totalIndex]
-            : "OTHER";
-
-        const dimensions = await getImageDimensions(file);
-
-        return {
-          id: `img_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`,
-          file,
-          previewUrl,
-          angle: defaultAngle,
-          sizeKb: Math.round(file.size / 1024),
-          dimensions,
-          qualityStatusPlaceholder: "PASSED",
-        };
-      })
-    );
-
-    onFilesChange([...files, ...newItems]);
+    if (validFiles.length > 0) {
+      await addNewFiles(validFiles, false);
+    }
   };
+
+  // ==========================================================================
+  // RETAKE & REPLACE WORKFLOW (Slot-Specific)
+  // ==========================================================================
+
+  const handleReplaceSlotFile = async (
+    slotId: string,
+    newFile: File,
+    isCamera: boolean = false
+  ) => {
+    const existing = files.find((f) => f.id === slotId);
+    if (!existing) return;
+
+    // Revoke old blob URL to free memory and guarantee old image is superseded
+    if (existing.previewUrl && existing.previewUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(existing.previewUrl);
+      trackedObjectUrlsRef.current.delete(existing.previewUrl);
+    }
+
+    // Strict requirement: Panel / Angle MUST survive retake/replace!
+    const preservedAngle = existing.angle;
+    const newPreviewUrl = URL.createObjectURL(newFile);
+    trackedObjectUrlsRef.current.add(newPreviewUrl);
+    const newDimensions = await getImageDimensions(newFile);
+
+    // Immediately replace slot with status CHECKING (never immediate PASSED)
+    const updatedFiles: UploadedFileItem[] = files.map((item) => {
+      if (item.id !== slotId) return item;
+      return {
+        ...item,
+        file: newFile,
+        previewUrl: newPreviewUrl,
+        angle: preservedAngle, // PANEL PRESERVED!
+        sizeKb: Math.round(newFile.size / 1024),
+        dimensions: newDimensions,
+        qualityStatus: "CHECKING" as const,
+        qualityScore: 0,
+        qualityReasons: [],
+        qualityMetrics: undefined,
+        qualityStatusPlaceholder: "PENDING",
+        isCameraCapture: isCamera,
+      };
+    });
+
+    onFilesChange(updatedFiles);
+
+    // Run fresh quality evaluation on the replacement image
+    runQualityEvaluation(slotId, newFile);
+  };
+
+  const triggerSlotDeviceReplacement = (slotId: string) => {
+    setTargetSlotId(slotId);
+    if (replaceFileInputRef.current) {
+      replaceFileInputRef.current.value = "";
+      replaceFileInputRef.current.click();
+    }
+  };
+
+  const handleReplaceFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const slotId = targetSlotId;
+    if (file && slotId) {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        setUploadError(`Selected file exceeds 15MB limit: ${formatFileSize(file.size)}`);
+        return;
+      }
+      await handleReplaceSlotFile(slotId, file, false);
+    }
+    setTargetSlotId(null);
+  };
+
+  // ==========================================================================
+  // REMOVE, MOVE, ANGLE EDIT
+  // ==========================================================================
 
   const handleRemove = (id: string) => {
     const item = files.find((f) => f.id === id);
@@ -173,15 +539,51 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Upload Warning / Error */}
+      {/* Hidden standard file picker */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => handleDeviceFileSelection(e.target.files)}
+      />
+
+      {/* Hidden slot replace file picker */}
+      <input
+        ref={replaceFileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={handleReplaceFileInputChange}
+      />
+
+      {/* Mobile native camera capture fallback */}
+      <input
+        ref={mobileCameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => handleDeviceFileSelection(e.target.files)}
+      />
+
+      {/* Upload Warning / Error Alert */}
       {uploadError && (
         <div className="flex items-center gap-2 p-3 rounded-lg border border-[#FCA5A5] bg-[#FEE2E2] text-xs text-[#991B1B]">
           <AlertCircle className="size-4 shrink-0" />
           <span>{uploadError}</span>
+          <button
+            type="button"
+            onClick={() => setUploadError(null)}
+            className="ml-auto text-[#991B1B] hover:text-[#7F1D1D] text-xs font-semibold"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
-      {/* Drag & Drop Zone */}
+      {/* Hero Upload & Camera Capture Zone */}
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -191,132 +593,462 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
         onDrop={(e) => {
           e.preventDefault();
           setIsDragOver(false);
-          handleFileSelection(e.dataTransfer.files);
+          handleDeviceFileSelection(e.dataTransfer.files);
         }}
         className={`relative flex flex-col items-center justify-center p-8 rounded-xl border-2 border-dashed transition-colors duration-150 text-center ${
           isDragOver
-            ? "border-[#2563EB] bg-[#EFF6FF]/60"
+            ? "border-[#2563EB] bg-[#EFF6FF]/70"
             : "border-[#CBD5E1] bg-[#F8FAFC] hover:bg-[#F1F5F9] hover:border-[#94A3B8]"
         }`}
       >
-        <div className="size-12 rounded-full bg-[#EFF6FF] text-[#1D4ED8] flex items-center justify-center mb-3">
-          <UploadCloud className="size-6" />
+        <div className="flex items-center gap-2 mb-3">
+          <div className="size-11 rounded-full bg-[#EFF6FF] text-[#1D4ED8] flex items-center justify-center shadow-2xs">
+            <Camera className="size-5.5" />
+          </div>
+          <div className="size-11 rounded-full bg-[#F1F5F9] text-[#475569] flex items-center justify-center shadow-2xs">
+            <UploadCloud className="size-5.5" />
+          </div>
         </div>
+
         <h3 className="text-sm font-bold text-[#0F172A]">
-          Drag and drop commodity package photos
+          Add Package Photo
         </h3>
         <p className="text-xs text-[#475569] mt-1 max-w-md">
-          Upload clear photographs of all package panels (Front, MRP stamp, barcode, back address, ingredients).
+          Capture packaging declarations with your device camera or choose existing image files. Drag and drop also supported.
         </p>
 
-        <label className="mt-4 cursor-pointer">
-          <input
-            type="file"
-            multiple
-            accept="image/jpeg,image/png,image/webp"
-            className="hidden"
-            onChange={(e) => handleFileSelection(e.target.files)}
-          />
-          <span className="inline-flex items-center justify-center h-9 px-4 rounded-lg bg-linear-to-b from-[#2563EB] via-[#1D4ED8] to-[#1E40AF] text-white text-xs font-semibold border border-[#1E40AF] shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_1px_3px_rgba(29,78,216,0.3)] hover:from-[#3B82F6] hover:via-[#2563EB] hover:to-[#1D4ED8] hover:shadow-[0_4px_16px_rgba(29,78,216,0.35),inset_0_1px_0_rgba(255,255,255,0.3)] hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-200 cursor-pointer select-none">
-            Browse Files from Device
-          </span>
-        </label>
+        {/* Dual Primary Action Buttons: [ Take Photo ] and [ Choose from Device ] */}
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+          {/* Action A: Take Photo via Camera */}
+          <button
+            type="button"
+            onClick={() => openCameraModal()}
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-linear-to-b from-[#2563EB] via-[#1D4ED8] to-[#1E40AF] text-white text-xs font-semibold border border-[#1E40AF] shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_1px_3px_rgba(29,78,216,0.3)] hover:from-[#3B82F6] hover:via-[#2563EB] hover:to-[#1D4ED8] hover:shadow-[0_4px_16px_rgba(29,78,216,0.35),inset_0_1px_0_rgba(255,255,255,0.3)] hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-150 cursor-pointer select-none"
+          >
+            <Camera className="size-4" />
+            <span>Take Photo</span>
+          </button>
+
+          {/* Action B: Choose from Device */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-white text-[#0F172A] text-xs font-semibold border border-[#CBD5E1] shadow-2xs hover:bg-[#F8FAFC] hover:border-[#94A3B8] hover:text-[#1D4ED8] active:scale-[0.98] transition-all duration-150 cursor-pointer select-none"
+          >
+            <FolderOpen className="size-4 text-[#475569]" />
+            <span>Choose from Device</span>
+          </button>
+        </div>
+
         <span className="text-[10px] text-[#94A3B8] mt-2 font-mono">
-          JPEG, PNG, WebP up to 15MB each (multi-image supported)
+          JPEG, PNG, WebP up to 15MB each (multi-image panel capture supported)
         </span>
       </div>
 
-      {/* Uploaded Photos Grid */}
+      {/* ==================================================================== */}
+      {/* CAMERA CAPTURE MODAL / VIEWFINDER */}
+      {/* ==================================================================== */}
+      {isCameraOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="relative w-full max-w-xl rounded-2xl bg-[#0B0F17] border border-[#334155] shadow-2xl overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1E293B] bg-[#0F172A]/90 text-white">
+              <div className="flex items-center gap-2">
+                <Camera className="size-4 text-[#60A5FA]" />
+                <span className="text-xs font-bold">
+                  {targetSlotId ? "Retake Package Photo" : "Take Package Photo"}
+                </span>
+                {targetSlotId && (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#1E293B] text-[#94A3B8] border border-[#334155]">
+                    Slot: {files.find((f) => f.id === targetSlotId)?.angle || "Evidence"}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {hasMultipleCameras && !capturedPreviewUrl && (
+                  <button
+                    type="button"
+                    onClick={toggleCameraFacing}
+                    className="p-1.5 rounded-lg text-[#94A3B8] hover:text-white hover:bg-[#1E293B] transition-colors cursor-pointer"
+                    title="Flip camera"
+                  >
+                    <SwitchCamera className="size-4" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={closeCameraModal}
+                  className="p-1.5 rounded-lg text-[#94A3B8] hover:text-white hover:bg-[#1E293B] transition-colors cursor-pointer"
+                  title="Close"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Viewfinder Body */}
+            <div className="relative w-full aspect-4/3 bg-black flex items-center justify-center overflow-hidden">
+              {/* Permission Denied or Camera Error View */}
+              {cameraError ? (
+                <div className="p-6 text-center max-w-sm space-y-3">
+                  <div className="size-12 rounded-full bg-[#FEE2E2] text-[#DC2626] mx-auto flex items-center justify-center">
+                    <AlertTriangle className="size-6" />
+                  </div>
+                  <h4 className="text-sm font-bold text-white">Camera Access Error</h4>
+                  <p className="text-xs text-[#94A3B8]">{cameraError}</p>
+                  <div className="flex flex-col gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        closeCameraModal();
+                        if (targetSlotId) {
+                          triggerSlotDeviceReplacement(targetSlotId);
+                        } else {
+                          fileInputRef.current?.click();
+                        }
+                      }}
+                      className="w-full h-8 px-3 rounded-lg bg-[#2563EB] text-white text-xs font-semibold hover:bg-[#1D4ED8] transition-colors cursor-pointer"
+                    >
+                      Choose from Device Instead
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startCamera(facingMode)}
+                      className="w-full h-8 px-3 rounded-lg bg-[#1E293B] text-white text-xs font-semibold hover:bg-[#334155] transition-colors cursor-pointer"
+                    >
+                      Retry Camera
+                    </button>
+                  </div>
+                </div>
+              ) : isCameraInitializing ? (
+                <div className="flex flex-col items-center justify-center gap-2 text-white/80">
+                  <Loader2 className="size-8 animate-spin text-[#60A5FA]" />
+                  <span className="text-xs font-medium">Starting camera stream...</span>
+                </div>
+              ) : capturedPreviewUrl ? (
+                /* Captured Frame Preview View */
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={capturedPreviewUrl}
+                  alt="Captured snapshot preview"
+                  className="size-full object-contain"
+                />
+              ) : (
+                /* Live Camera Stream with Package Framing Overlay */
+                <div className="relative size-full flex items-center justify-center">
+                  <video
+                    ref={videoRef}
+                    playsInline
+                    autoPlay
+                    muted
+                    className="size-full object-contain"
+                  />
+                  {/* Framing Guide for Packaging Label Alignment */}
+                  <div className="absolute inset-8 border-2 border-dashed border-white/50 rounded-xl pointer-events-none flex flex-col justify-between p-3">
+                    <div className="flex justify-between text-[10px] font-mono text-white/70 bg-black/40 px-2 py-0.5 rounded self-start">
+                      <span>Position package inside frame</span>
+                    </div>
+                    <div className="text-[10px] font-mono text-white/70 bg-black/40 px-2 py-0.5 rounded self-end">
+                      <span>Ensure text & MRP are clear</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Controls Footer */}
+            <div className="p-4 border-t border-[#1E293B] bg-[#0F172A] flex items-center justify-between gap-3">
+              {capturedPreviewUrl ? (
+                /* Actions after capture: Retake or Confirm */
+                <>
+                  <button
+                    type="button"
+                    onClick={retakeCapturedFrame}
+                    className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#1E293B] text-white text-xs font-semibold hover:bg-[#334155] transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="size-3.5" />
+                    <span>Retake</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={confirmCapturedPhoto}
+                    className="inline-flex items-center gap-1.5 h-9 px-5 rounded-lg bg-linear-to-b from-[#16A34A] to-[#15803D] text-white text-xs font-bold shadow-md hover:from-[#22C55E] hover:to-[#16A34A] active:scale-95 transition-all cursor-pointer"
+                  >
+                    <CheckCircle2 className="size-4" />
+                    <span>Use Photo</span>
+                  </button>
+                </>
+              ) : !cameraError && !isCameraInitializing ? (
+                /* Action to snap frame */
+                <>
+                  <button
+                    type="button"
+                    onClick={closeCameraModal}
+                    className="h-9 px-4 rounded-lg bg-[#1E293B] text-white text-xs font-semibold hover:bg-[#334155] transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={capturePhotoFrame}
+                    className="inline-flex items-center gap-2 h-10 px-6 rounded-full bg-white text-[#0F172A] text-xs font-bold shadow-lg hover:bg-[#F1F5F9] active:scale-95 transition-all cursor-pointer ring-4 ring-white/20"
+                  >
+                    <div className="size-3 rounded-full bg-[#DC2626] animate-pulse" />
+                    <span>Capture Photo</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeCameraModal();
+                      if (targetSlotId) {
+                        triggerSlotDeviceReplacement(targetSlotId);
+                      } else {
+                        fileInputRef.current?.click();
+                      }
+                    }}
+                    className="text-xs text-[#94A3B8] hover:text-white underline cursor-pointer"
+                  >
+                    Choose from Device
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={closeCameraModal}
+                  className="w-full h-8 px-4 rounded-lg bg-[#1E293B] text-white text-xs font-semibold hover:bg-[#334155] transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* UPLOADED / CAPTURED PHOTOS GRID (Multi-slot with Quality & Retake) */}
+      {/* ==================================================================== */}
       {files.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div className="flex items-center justify-between text-xs text-[#475569]">
             <span className="font-semibold text-[#0F172A]">
-              Uploaded Images ({files.length})
+              Package Photos & Evidence ({files.length})
             </span>
-            <span>Assign panel type and sequence to aid legal inspection classification</span>
+            <span className="hidden sm:inline">
+              Each slot is independently analyzed for clarity before OCR.
+            </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {files.map((item, index) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 p-3 rounded-lg border border-[#E2E8F0] bg-white shadow-2xs hover:border-[#CBD5E1] transition-colors"
-              >
-                <div className="size-16 rounded-md bg-[#F1F5F9] border border-[#E2E8F0] overflow-hidden shrink-0 flex items-center justify-center relative">
-                  {item.previewUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={item.previewUrl}
-                      alt={item.file.name}
-                      className="size-full object-cover"
-                    />
-                  ) : (
-                    <ImageIcon className="size-6 text-[#94A3B8]" />
-                  )}
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {files.map((item, index) => {
+              const isChecking = item.qualityStatus === "CHECKING";
+              const isGood = item.qualityStatus === "GOOD";
+              const isBorderline = item.qualityStatus === "BORDERLINE";
+              const isPoor = item.qualityStatus === "POOR";
+              const isUnavailable = item.qualityStatus === "UNAVAILABLE";
 
-                <div className="flex-1 min-w-0 flex flex-col gap-1">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-xs font-semibold text-[#0F172A] truncate" title={item.file.name}>
-                      {item.file.name}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      {index > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => handleMove(index, "up")}
-                          className="text-[#94A3B8] hover:text-[#1D4ED8] hover:bg-[#EFF6FF] p-1 rounded transition-colors cursor-pointer active:scale-90"
-                          title="Move earlier"
-                        >
-                          <ArrowUp className="size-3" />
-                        </button>
+              return (
+                <div
+                  key={item.id}
+                  className={`flex flex-col gap-2.5 p-3.5 rounded-xl border transition-all ${
+                    isPoor
+                      ? "border-[#FCA5A5] bg-[#FEF2F2]/60 shadow-xs"
+                      : isBorderline
+                      ? "border-[#FDE68A] bg-[#FFFBEB]/60 shadow-xs"
+                      : "border-[#E2E8F0] bg-white shadow-2xs hover:border-[#CBD5E1]"
+                  }`}
+                >
+                  {/* Top Bar: Thumbnail + Metadata + Move/Remove */}
+                  <div className="flex items-start gap-3">
+                    <div className="size-18 rounded-lg bg-[#F1F5F9] border border-[#E2E8F0] overflow-hidden shrink-0 flex items-center justify-center relative shadow-2xs">
+                      {item.previewUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={item.previewUrl}
+                          alt={item.file.name}
+                          className="size-full object-cover"
+                        />
+                      ) : (
+                        <ImageIcon className="size-7 text-[#94A3B8]" />
                       )}
-                      {index < files.length - 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleMove(index, "down")}
-                          className="text-[#94A3B8] hover:text-[#1D4ED8] hover:bg-[#EFF6FF] p-1 rounded transition-colors cursor-pointer active:scale-90"
-                          title="Move later"
+                      {item.isCameraCapture && (
+                        <span
+                          className="absolute bottom-0.5 right-0.5 p-0.5 rounded bg-black/70 text-white"
+                          title="Captured via camera"
                         >
-                          <ArrowDown className="size-3" />
-                        </button>
+                          <Camera className="size-3" />
+                        </span>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => handleRemove(item.id)}
-                        className="text-[#94A3B8] hover:text-[#DC2626] hover:bg-[#FEE2E2] p-1 rounded transition-colors cursor-pointer active:scale-90"
-                        title="Remove image"
-                      >
-                        <X className="size-3.5" />
-                      </button>
+                    </div>
+
+                    <div className="flex-1 min-w-0 flex flex-col gap-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span
+                          className="text-xs font-bold text-[#0F172A] truncate"
+                          title={item.file.name}
+                        >
+                          {item.file.name}
+                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {index > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleMove(index, "up")}
+                              className="text-[#94A3B8] hover:text-[#1D4ED8] hover:bg-[#EFF6FF] p-1 rounded transition-colors cursor-pointer active:scale-90"
+                              title="Move earlier"
+                            >
+                              <ArrowUp className="size-3" />
+                            </button>
+                          )}
+                          {index < files.length - 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleMove(index, "down")}
+                              className="text-[#94A3B8] hover:text-[#1D4ED8] hover:bg-[#EFF6FF] p-1 rounded transition-colors cursor-pointer active:scale-90"
+                              title="Move later"
+                            >
+                              <ArrowDown className="size-3" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleRemove(item.id)}
+                            className="text-[#94A3B8] hover:text-[#DC2626] hover:bg-[#FEE2E2] p-1 rounded transition-colors cursor-pointer active:scale-90"
+                            title="Remove photo"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[10px] text-[#64748B] font-mono">
+                        <span>{formatFileSize(item.file.size)}</span>
+                        <span>•</span>
+                        <span>{item.dimensions || "Dimensions loading..."}</span>
+                      </div>
+
+                      {/* Panel Selector (Belongs to slot) */}
+                      <div className="flex items-center gap-2 mt-1">
+                        <select
+                          value={item.angle}
+                          onChange={(e) =>
+                            handleAngleChange(item.id, e.target.value as PackageImageAngle)
+                          }
+                          className="text-[11px] h-6 px-1.5 rounded border border-[#CBD5E1] bg-[#F8FAFC] text-[#0F172A] focus:outline-none focus:ring-1 focus:ring-[#2563EB] flex-1 min-w-0 font-medium cursor-pointer"
+                        >
+                          {AVAILABLE_ANGLES.map((ang) => (
+                            <option key={ang.value} value={ang.value}>
+                              {ang.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 text-[10px] text-[#94A3B8] font-mono">
-                    <span>{formatFileSize(item.file.size)}</span>
-                    <span>•</span>
-                    <span>{item.dimensions || "Dimensions loading"}</span>
+                  {/* Quality Status Badge & Progress */}
+                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#F1F5F9]">
+                    <span className="text-[10px] font-semibold text-[#64748B]">
+                      Image Quality:
+                    </span>
+
+                    {isChecking ? (
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-[#1D4ED8] bg-[#EFF6FF] px-2 py-0.5 rounded border border-[#BFDBFE] animate-pulse">
+                        <Loader2 className="size-3 animate-spin" />
+                        <span>Checking image quality...</span>
+                      </span>
+                    ) : isGood ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#15803D] bg-[#DCFCE7] px-2 py-0.5 rounded border border-[#86EFAC]">
+                        <CheckCircle2 className="size-3" />
+                        <span>Good</span>
+                      </span>
+                    ) : isBorderline ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#B45309] bg-[#FEF3C7] px-2 py-0.5 rounded border border-[#FDE68A]">
+                        <AlertTriangle className="size-3" />
+                        <span>Borderline</span>
+                      </span>
+                    ) : isPoor ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#B91C1C] bg-[#FEE2E2] px-2 py-0.5 rounded border border-[#FCA5A5]">
+                        <XCircle className="size-3" />
+                        <span>Poor quality</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#475569] bg-[#F1F5F9] px-2 py-0.5 rounded border border-[#CBD5E1]">
+                        <span>Quality check unavailable</span>
+                      </span>
+                    )}
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 mt-0.5">
-                    <select
-                      value={item.angle}
-                      onChange={(e) => handleAngleChange(item.id, e.target.value as PackageImageAngle)}
-                      className="text-[11px] h-6 px-1.5 rounded border border-[#CBD5E1] bg-[#F8FAFC] text-[#0F172A] focus:outline-none focus:ring-1 focus:ring-[#2563EB] flex-1 min-w-0 font-medium"
-                    >
-                      {AVAILABLE_ANGLES.map((ang) => (
-                        <option key={ang.value} value={ang.value}>
-                          {ang.label}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="text-[10px] font-bold text-[#15803D] bg-[#DCFCE7] px-2 py-0.5 rounded border border-[#86EFAC] shrink-0">
-                      PASSED
-                    </span>
-                  </div>
+                  {/* Retake Recommended Banner & Reasons (Shown for POOR or BORDERLINE) */}
+                  {(isPoor || isBorderline) && (
+                    <div className="p-2.5 rounded-lg border border-[#FCA5A5] bg-white space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-[#B91C1C] font-bold text-[11px]">
+                          <AlertTriangle className="size-3.5 shrink-0" />
+                          <span>Retake recommended</span>
+                        </div>
+                        <span className="text-[10px] text-[#64748B]">
+                          Slot preserved: <strong className="text-[#0F172A]">{item.angle}</strong>
+                        </span>
+                      </div>
+
+                      {/* Friendly non-technical reasons */}
+                      {item.qualityReasons.length > 0 && (
+                        <ul className="space-y-0.5 text-[11px] text-[#475569] pl-3 list-disc marker:text-[#DC2626]">
+                          {item.qualityReasons.map((reason, rIdx) => (
+                            <li key={rIdx}>{reason}</li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {/* Slot Retake / Replace Actions */}
+                      <div className="pt-1 flex items-center gap-2">
+                        {/* Retake Photo (Camera) */}
+                        <button
+                          type="button"
+                          onClick={() => openCameraModal(item.id)}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 h-7 px-2.5 rounded-md bg-[#2563EB] text-white text-[11px] font-semibold hover:bg-[#1D4ED8] active:scale-95 transition-all cursor-pointer shadow-2xs"
+                        >
+                          <Camera className="size-3" />
+                          <span>Retake Photo</span>
+                        </button>
+
+                        {/* Replace Photo (Device File) */}
+                        <button
+                          type="button"
+                          onClick={() => triggerSlotDeviceReplacement(item.id)}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 h-7 px-2.5 rounded-md bg-white border border-[#CBD5E1] text-[#0F172A] text-[11px] font-semibold hover:bg-[#F8FAFC] hover:border-[#94A3B8] active:scale-95 transition-all cursor-pointer shadow-2xs"
+                        >
+                          <FolderOpen className="size-3 text-[#475569]" />
+                          <span>Replace Photo</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Unavailable Fallback Action */}
+                  {isUnavailable && (
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[10px] text-[#64748B]">
+                        Analysis did not complete.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => runQualityEvaluation(item.id, item.file)}
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#1D4ED8] hover:underline"
+                      >
+                        <RefreshCw className="size-2.5" />
+                        <span>Check Again</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

@@ -115,11 +115,11 @@ function transformNotifications(apiNotifications: ApiNotification[]): Notificati
       } else if (notif.status === "COMPLETED") {
         type = "COMPLIANT";
         title = `Inspection Verified (PASS)`;
-        description = `${notif.product_type || "Commodity"} (${notif.inspection_id || notif.id}) passed all statutory compliance checks.`;
+        description = `${notif.product_type || "Commodity"} (${notif.inspection_id || notif.id}) passed all compliance checks.`;
       } else if (notif.status === "MANUAL_REVIEW") {
         type = "REVIEW";
         title = `Manual Review Required`;
-        description = `${notif.product_type || "Commodity"} (${notif.inspection_id || notif.id}) requires inspector confirmation.`;
+        description = `${notif.product_type || "Commodity"} (${notif.inspection_id || notif.id}) requires officer review.`;
       } else {
         title = `Regulatory Activity`;
         description = `${notif.product_type || "Commodity"} verification update.`;
@@ -175,11 +175,17 @@ export const Header: React.FC<HeaderProps> = ({
           setIsLoadingNotifications(true);
         }
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers: Record<string, string> = {};
+        if (session?.access_token) {
+          headers["Authorization"] = `Bearer ${session.access_token}`;
+        }
+
+        const user = session?.user;
         const userId = user?.id || currentUser?.id || "";
         const query = userId ? `?limit=20&user_id=${encodeURIComponent(userId)}` : `?limit=20`;
 
-        const response = await fetch(`/api/notifications${query}`);
+        const response = await fetch(`/api/notifications${query}`, { headers });
 
         if (!response.ok) {
           console.warn("Notice: Notifications fetch status:", response.status);
@@ -304,12 +310,18 @@ export const Header: React.FC<HeaderProps> = ({
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       setUnreadCount(0);
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {};
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+      const user = session?.user;
       const userId = user?.id || currentUser?.id || "";
       const query = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
 
       await fetch(`/api/notifications/read-all${query}`, {
         method: "PATCH",
+        headers,
       });
     } catch (err) {
       console.error("Error marking all as read:", err);
@@ -325,12 +337,18 @@ export const Header: React.FC<HeaderProps> = ({
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {};
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+      const user = session?.user;
       const userId = user?.id || currentUser?.id || "";
       const query = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
 
       await fetch(`/api/notifications/${item.id}/read${query}`, {
         method: "PATCH",
+        headers,
       });
     } catch (err) {
       console.error("Error marking notification as read:", err);

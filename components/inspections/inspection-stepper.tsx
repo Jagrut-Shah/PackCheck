@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   FileText,
-  Cpu,
+  ShieldCheck,
   CheckSquare,
   ShieldAlert,
   Image as ImageIcon,
@@ -35,9 +35,9 @@ export const InspectionStepper: React.FC<InspectionStepperProps> = ({
     },
     {
       id: "processing",
-      label: "Processing",
+      label: "Verification",
       href: `/inspections/${inspectionId}/processing`,
-      icon: <Cpu className="size-3.5" />,
+      icon: <ShieldCheck className="size-3.5" />,
     },
     {
       id: "review",

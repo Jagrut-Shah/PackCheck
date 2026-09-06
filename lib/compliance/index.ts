@@ -155,7 +155,7 @@ export async function evaluateCompliance(
     mrpObserved = mrpObserved || "Missing / Invalid";
   } else if (mrpField.value.isInclusiveOfAllTaxes) {
     mrpResult = "PASS";
-    mrpExplanation = `Maximum Retail Price declared with statutory tax notice: ${mrpField.value.rawText}.`;
+    mrpExplanation = `Maximum Retail Price declared with required tax notice: ${mrpField.value.rawText}.`;
   } else {
     mrpResult = "MANUAL_REVIEW";
     mrpExplanation = `Maximum Retail Price declared (${mrpField.value.rawText}) but missing explicit 'inclusive of all taxes' notice.`;
@@ -404,7 +404,7 @@ export async function evaluateCompliance(
     reviewCount,
     score,
     scoreMethodVersion: "LM-COMPLIANCE-INDEX-V1",
-    summaryNotes: `Statutory evaluation for ${
+    summaryNotes: `Compliance evaluation for ${
       commodityVal || prodName || "commodity"
     }: ${passedCount}/${rulesEvaluated} rules passed, ${failedCount} failed, ${reviewCount} requiring manual review.`,
     results,

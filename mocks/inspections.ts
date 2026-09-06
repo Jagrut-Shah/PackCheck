@@ -80,7 +80,7 @@ export const MOCK_INSPECTIONS: InspectionRecord[] = [
     complianceEvaluation: MOCK_COMPLIANCE_AMUL_GHEE,
     findings: [],
     reportId: "rep_amul_001",
-    inspectorNotes: "All declarations match statutory criteria under PCR 2011.",
+    inspectorNotes: "All declarations match compliance criteria under PCR 2011.",
   },
   {
     id: "ins_nutribite_cookies_002",
@@ -207,7 +207,7 @@ export const MOCK_INSPECTIONS: InspectionRecord[] = [
     ocrResults: [],
     findings: [],
     inspectorNotes:
-      "Batch code and packing month obscured by curved glass reflection. Manual verification required before statutory verdict.",
+      "Batch code and packing month obscured by curved glass reflection. Manual verification required before final verdict.",
   },
   {
     id: "ins_fortune_oil_004",

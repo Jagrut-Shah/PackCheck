@@ -38,15 +38,18 @@ export default function OfficerProfilePage() {
       setIsLoading(true);
       try {
         const u = await getCurrentUser();
-        if (u) setUser(u);
+        if (u) {
+          setUser(u);
 
-        // Fetch real completed inspections count from Supabase
-        const compRes = await supabase
-          .from("inspections")
-          .select("*", { count: "exact", head: true })
-          .eq("status", "COMPLETED");
+          // Fetch real completed inspections count from Supabase for this officer
+          const compRes = await supabase
+            .from("inspections")
+            .select("*", { count: "exact", head: true })
+            .eq("inspector_id", u.id)
+            .eq("status", "COMPLETED");
 
-        setCompletedAudits(compRes.count || 0);
+          setCompletedAudits(compRes.count || 0);
+        }
       } catch (err) {
         console.warn("Could not load officer credentials or metrics:", err);
       } finally {
@@ -164,7 +167,7 @@ export default function OfficerProfilePage() {
 
               {/* Official Status Badge */}
               <div className="mt-3">
-                <Badge variant="pass">Active Statutory Clearance</Badge>
+                <Badge variant="pass">Active Enforcement Standing</Badge>
               </div>
 
               {/* Quick Identity Particulars */}
@@ -333,20 +336,20 @@ export default function OfficerProfilePage() {
             <CardHeader className="pb-3 border-b border-[#E2E8F0]">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-[#0F172A] flex items-center gap-2">
                 <Scale className="size-3.5 text-[#1D4ED8]" />
-                <span>Jurisdiction & Statutory Enforcement Authority</span>
+                <span>Jurisdiction & Enforcement Authority</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-5 text-xs space-y-4">
               {/* Legal Mandate Header */}
               <div className="p-3.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2 border-b border-[#E2E8F0]">
-                  <span className="font-semibold text-[#0F172A]">Governing Statute</span>
+                  <span className="font-semibold text-[#0F172A]">Governing Law</span>
                   <span className="text-[#475569] font-medium">
                     Legal Metrology Act, 2009 (Act No. 1 of 2010)
                   </span>
                 </div>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2 border-b border-[#E2E8F0]">
-                  <span className="font-semibold text-[#0F172A]">Subordinate Legislation</span>
+                  <span className="font-semibold text-[#0F172A]">Applicable Rules</span>
                   <span className="text-[#475569] font-medium">
                     Legal Metrology (Packaged Commodities) Rules, 2011 [PCR 2011]
                   </span>
@@ -365,11 +368,11 @@ export default function OfficerProfilePage() {
                 </div>
               </div>
 
-              {/* Statutory Warrant / Power Summary */}
+              {/* Enforcement Authority Summary */}
               <div className="p-3.5 rounded-lg border border-[#E2E8F0] bg-white space-y-2.5">
                 <div className="flex items-center gap-2 text-[#0F172A] font-bold">
                   <Award className="size-3.5 text-[#1D4ED8]" />
-                  <span>Statutory Powers Vested in Authorized Officer</span>
+                  <span>Enforcement Authority of Inspecting Officer</span>
                 </div>
                 <ul className="space-y-2 text-[#475569] pl-1">
                   <li className="flex items-start gap-2">
@@ -387,7 +390,7 @@ export default function OfficerProfilePage() {
                   <li className="flex items-start gap-2">
                     <span className="font-bold text-[#0F172A] shrink-0">• Section 48 & 49:</span>
                     <span>
-                      Authority to recommend compounding of statutory offences and issue formal notices to corporate pre-packers.
+                      Authority to recommend compounding of compliance offences and issue formal notices to pre-packers.
                     </span>
                   </li>
                   <li className="flex items-start gap-2">

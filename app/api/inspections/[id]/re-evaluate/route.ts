@@ -21,6 +21,7 @@ import { evaluateCompliance } from "@/lib/compliance";
 import { mergeCorrectionsWithExtraction, reconstructDeclarationsFromFields } from "@/lib/compliance/merge-corrections";
 import { recordActivityEvent } from "@/lib/events/activity-event";
 import { ExtractedDeclarations } from "@/lib/types/extraction";
+import { requireAuth, verifyInspectionOwnership } from "@/lib/auth/server";
 
 export const maxDuration = 60; // 60 second timeout
 
@@ -41,6 +42,9 @@ export async function POST(
   const db = supabaseAdmin || supabase;
   
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { id: inspectionId } = await context.params;
 
     if (!inspectionId) {
@@ -56,6 +60,21 @@ export async function POST(
       );
     }
 
+    // Verify ownership
+    const ownership = await verifyInspectionOwnership(inspectionId, user.id);
+    if (!ownership.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "INSPECTION_NOT_FOUND",
+            message: ownership.errorMessage || `Inspection ${inspectionId} not found`,
+          },
+        } as ApiResponse<null>,
+        { status: ownership.errorStatus || 404 }
+      );
+    }
+
     // ============================================================
     // 1. Fetch inspection record
     // ============================================================
@@ -63,6 +82,7 @@ export async function POST(
       .from("inspections")
       .select("id, product_type, inspector_id, status")
       .eq("id", inspectionId)
+      .eq("inspector_id", user.id)
       .single();
 
     if (inspectionError || !inspection) {
@@ -292,7 +312,8 @@ export async function POST(
       await db
         .from("inspections")
         .update({ status: "COMPLETED", updated_at: new Date().toISOString() })
-        .eq("id", inspectionId);
+        .eq("id", inspectionId)
+        .eq("inspector_id", user.id);
     }
 
     // ============================================================
@@ -304,7 +325,7 @@ export async function POST(
         actionLabel: "Compliance Re-Assessment with Corrections",
         inspectionId,
         commodityName: inspection.product_type || "Packaged Commodity",
-        actorId: inspection.inspector_id || "system",
+        actorId: user.id,
         actorName: "Compliance Re-Evaluation Engine",
         category: "PIPELINE",
         details: `Compliance re-evaluated after ${correctionCount} field correction(s). Previous status: ${previousViolationCount} violations → New status: ${newFindings.length} violations.`,

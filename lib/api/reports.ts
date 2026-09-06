@@ -20,6 +20,19 @@ export interface ReportFilterParams {
   searchQuery?: string;
 }
 
+export function sanitizeOfficerName(name: string | null | undefined): string {
+  if (!name) return "Legal Metrology Inspector";
+  const trimmed = name.trim();
+  if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed) ||
+    /^(usr_|user_|officer_|insp_)[a-zA-Z0-9_-]+$/i.test(trimmed) ||
+    /^[0-9a-f]{16,64}$/i.test(trimmed)
+  ) {
+    return "Legal Metrology Inspector";
+  }
+  return trimmed;
+}
+
 export interface BackendReportDataResponse {
   inspection: any;
   extracted_fields: any[];
@@ -62,7 +75,7 @@ export function mapBackendReportDataToVerificationReport(
     inspectionId: inspection.id,
     inspectionNumber: `INS-${shortId}`,
     generatedAt: inspection.updated_at || dateStr,
-    generatedBy: inspection.inspector_id || "Legal Metrology Inspector",
+    generatedBy: sanitizeOfficerName(inspection.inspector_id),
     statutoryAct: "Legal Metrology Act, 2009 & Packaged Commodities Rules, 2011",
     commodityName,
     manufacturerOrPacker,
@@ -74,12 +87,12 @@ export function mapBackendReportDataToVerificationReport(
     product: commodityName,
     inspectionDate: dateStr,
     location: "",
-    inspector: inspection.inspector_id || "Legal Metrology Inspector",
+    inspector: sanitizeOfficerName(inspection.inspector_id),
     signoff: {
       officerId: inspection.inspector_id || "",
-      officerName: inspection.inspector_id || "Legal Metrology Inspector",
+      officerName: sanitizeOfficerName(inspection.inspector_id),
       designation: "Legal Metrology Inspector",
-      badgeNumber: `LM-${shortId}`,
+      badgeNumber: "",
       signedAt: inspection.updated_at || dateStr,
     },
   };
@@ -112,12 +125,12 @@ export async function getReports(params?: ReportFilterParams): Promise<Verificat
         product: insp.product || insp.commodity?.commodityName || "Packaged Commodity",
         inspectionDate: dateStr,
         location: insp.location || "",
-        inspector: insp.inspector || insp.inspectorName || "Legal Metrology Inspector",
+        inspector: sanitizeOfficerName(insp.inspector || insp.inspectorName),
         signoff: {
           officerId: insp.inspectorId || insp.inspector || "",
-          officerName: insp.inspectorName || insp.inspector || "Legal Metrology Inspector",
+          officerName: sanitizeOfficerName(insp.inspectorName || insp.inspector),
           designation: "Legal Metrology Inspector",
-          badgeNumber: `LM-${shortId}`,
+          badgeNumber: "",
           signedAt: insp.timestamps.completedAt || insp.updatedAt || dateStr,
         },
         documentHash: `SHA256:${insp.id.replace(/-/g, "").substring(0, 32)}`,
@@ -188,9 +201,9 @@ export async function getReportById(id: string): Promise<VerificationReportData 
         extractedDeclarations: inspection.extractedDeclarations || ({} as any),
         signoff: {
           officerId: inspection.inspectorId,
-          officerName: inspection.inspectorName || inspection.inspector || "Legal Metrology Inspector",
+          officerName: sanitizeOfficerName(inspection.inspectorName || inspection.inspector),
           designation: "Legal Metrology Inspector",
-          badgeNumber: `LM-${shortId}`,
+          badgeNumber: "",
           signedAt: inspection.timestamps.completedAt || inspection.updatedAt || dateStr,
         },
         documentHash: `SHA256:${inspection.id.replace(/-/g, "").substring(0, 32)}`,

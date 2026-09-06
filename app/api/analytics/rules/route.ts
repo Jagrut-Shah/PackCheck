@@ -8,6 +8,7 @@ import {
   StatutoryRuleDefinition,
 } from "@/lib/compliance/rules-catalog";
 import { ApiResponse } from "@/lib/types/common";
+import { requireAuth } from "@/lib/auth/server";
 
 export interface RuleRecentFinding {
   id: string;
@@ -74,12 +75,16 @@ export interface RuleAnalyticsResponseData {
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+
     const db = supabaseAdmin || supabase;
 
-    // 1. Fetch all inspections
+    // 1. Fetch inspections for this user
     const { data: inspections, error: inspectionsError } = await db
       .from("inspections")
       .select("id, product_type, status, created_at")
+      .eq("inspector_id", user.id)
       .order("created_at", { ascending: false });
 
     if (inspectionsError) {
@@ -97,15 +102,45 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const allInspections = inspections || [];
+
+    // If user has 0 inspections, return zeroed statistics immediately
+    if (allInspections.length === 0) {
+      return NextResponse.json(
+        {
+          success: true,
+          data: {
+            overview: {
+              totalInspections: 0,
+              uniqueProductsCount: 0,
+              evaluatedInspections: 0,
+              compliantCount: 0,
+              nonCompliantCount: 0,
+              pendingReviewCount: 0,
+              complianceRate: 100.0,
+              totalFindingsCount: 0,
+              totalMonitoredRules: 0,
+              topViolationArea: null,
+              severityDistribution: { critical: 0, high: 0, standard: 0 },
+            },
+            rules: [],
+          },
+        } as ApiResponse<RuleAnalyticsResponseData>,
+        { status: 200 }
+      );
+    }
+
     const inspectionMap = new Map<string, { id: string; product_type: string; status: string; created_at: string }>();
     allInspections.forEach((insp) => {
       inspectionMap.set(insp.id, insp);
     });
 
-    // 2. Fetch all final results (ordered newest first)
+    const userInspectionIds = allInspections.map((i) => i.id);
+
+    // 2. Fetch final results for user's inspections only
     const { data: finalResults, error: resultsError } = await db
       .from("final_results")
       .select("id, inspection_id, status, total_violations_count, high_severity_count, findings_json, created_at")
+      .in("inspection_id", userInspectionIds)
       .order("created_at", { ascending: false });
 
     if (resultsError) {
@@ -120,10 +155,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }
     });
 
-    // 3. Fetch all compliance findings
+    // 3. Fetch compliance findings for user's inspections only
     const { data: findings, error: findingsError } = await db
       .from("compliance_findings")
       .select("id, inspection_id, rule_id, rule_name, severity, message, created_at")
+      .in("inspection_id", userInspectionIds)
       .order("created_at", { ascending: false });
 
     if (findingsError) {

@@ -21,7 +21,7 @@ export const MOCK_REPORTS: VerificationReportData[] = [
     inspector: "Rajesh Kumar Sharma",
     overallResult: OVERALL_RESULT.PASS,
     executiveSummary:
-      "Commodity label complies with all statutory requirements under Legal Metrology (Packaged Commodities) Rules, 2011. Zero non-compliance findings detected.",
+      "Commodity label complies with all requirements under Legal Metrology (Packaged Commodities) Rules, 2011. Zero non-compliance findings detected.",
     extractedDeclarations: MOCK_EXTRACTION_AMUL_GHEE,
     complianceResults: MOCK_COMPLIANCE_AMUL_GHEE.results,
     findings: [],
@@ -64,7 +64,7 @@ export const MOCK_REPORTS: VerificationReportData[] = [
     inspector: "Rajesh Kumar Sharma",
     overallResult: OVERALL_RESULT.POTENTIAL_NON_COMPLIANCE,
     executiveSummary:
-      "Commodity label exhibits 3 statutory infractions under Rule 6(1)(e) (missing tax inclusivity statement), Rule 6(1)(f) (missing consumer care phone), and Unit Sale Price requirements.",
+      "Commodity label exhibits 3 compliance issues under Rule 6(1)(e) (missing tax inclusivity statement), Rule 6(1)(f) (missing consumer care phone), and Unit Sale Price requirements.",
     extractedDeclarations: MOCK_EXTRACTION_NUTRIBITE,
     complianceResults: MOCK_COMPLIANCE_NUTRIBITE.results,
     findings: MOCK_FINDINGS_NUTRIBITE,

@@ -3,6 +3,7 @@ import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { ApiResponse } from '@/lib/types/common'
 import { recordActivityEvent } from '@/lib/events/activity-event'
 import { getInspectionCompanyLink } from '@/lib/companies/storage'
+import { requireAuth, verifyInspectionOwnership } from '@/lib/auth/server'
 
 interface InspectionDetailResponse {
   id: string
@@ -28,6 +29,9 @@ export async function GET(
 ): Promise<NextResponse> {
   const db = supabaseAdmin || supabase;
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { id: inspectionId } = await context.params
 
     if (!inspectionId) {
@@ -43,11 +47,27 @@ export async function GET(
       )
     }
 
+    // Verify ownership
+    const ownership = await verifyInspectionOwnership(inspectionId, user.id);
+    if (!ownership.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INSPECTION_NOT_FOUND',
+            message: ownership.errorMessage || `Inspection ${inspectionId} not found`
+          }
+        } as ApiResponse<null>,
+        { status: ownership.errorStatus || 404 }
+      )
+    }
+
     // Fetch inspection record
     const { data: inspection, error: inspectionError } = await db
       .from('inspections')
       .select('*')
       .eq('id', inspectionId)
+      .eq('inspector_id', user.id)
       .single()
 
     if (inspectionError || !inspection) {
@@ -147,6 +167,9 @@ export async function PATCH(
 ): Promise<NextResponse> {
   const db = supabaseAdmin || supabase;
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { id: inspectionId } = await context.params;
     const body = await request.json().catch(() => ({}));
     const { status } = body;
@@ -164,10 +187,26 @@ export async function PATCH(
       );
     }
 
+    // Verify ownership
+    const ownership = await verifyInspectionOwnership(inspectionId, user.id);
+    if (!ownership.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INSPECTION_NOT_FOUND',
+            message: ownership.errorMessage || `Inspection ${inspectionId} not found`
+          }
+        } as ApiResponse<null>,
+        { status: ownership.errorStatus || 404 }
+      );
+    }
+
     const { error } = await db
       .from('inspections')
       .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', inspectionId);
+      .eq('id', inspectionId)
+      .eq('inspector_id', user.id);
 
     if (error) {
       return NextResponse.json(
@@ -189,12 +228,13 @@ export async function PATCH(
         action: "STATUS_CHANGED",
         actionLabel: `Status Changed to ${status}`,
         inspectionId,
-        actorName: "System Enforcement Officer",
+        actorId: user.id,
+        actorName: "Legal Metrology Inspector",
         category: "USER_ACTION",
         details: `Inspection status updated to ${status}.`,
         notification: isReview
           ? {
-              targetUserId: "all",
+              targetUserId: user.id,
               type: "REVIEW",
               title: "Manual Review Required",
               message: `Inspection ${inspectionId.slice(0, 8).toUpperCase()} was moved to manual review.`,

@@ -45,7 +45,7 @@ export const ComplianceVerdictBanner: React.FC<ComplianceVerdictBannerProps> = (
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase font-bold tracking-wider text-[#475569]">
-                Statutory Determination
+                Compliance Result
               </span>
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white text-[#475569] border border-black/10">
                 {ruleEngineVersion}
@@ -64,7 +64,7 @@ export const ComplianceVerdictBanner: React.FC<ComplianceVerdictBannerProps> = (
           </span>
           {failedCount > 0 && (
             <span className="px-2.5 py-1 rounded bg-white text-[#991B1B] border border-[#FCA5A5]">
-              {failedCount} Infractions
+              {failedCount} {failedCount === 1 ? "Issue" : "Issues"}
             </span>
           )}
           {reviewCount > 0 && (
@@ -77,7 +77,23 @@ export const ComplianceVerdictBanner: React.FC<ComplianceVerdictBannerProps> = (
 
       {summaryNotes && (
         <p className="text-xs text-[#0F172A] mt-3 leading-relaxed">
-          {summaryNotes}
+          {summaryNotes
+            .replace(/\bstatutory\s+infraction\(s\)/gi, "compliance issue(s)")
+            .replace(/\bstatutory\s+infractions\b/gi, "compliance issues")
+            .replace(/\bstatutory\s+infraction\b/gi, "compliance issue")
+            .replace(/\binfraction\(s\)/gi, "issue(s)")
+            .replace(/\binfractions\b/gi, "compliance issues")
+            .replace(/\binfraction\b/gi, "compliance issue")
+            .replace(/\bstatutory\s+evaluation\b/gi, "compliance evaluation")
+            .replace(/\bstatutory\s+standards\b/gi, "metrology standards")
+            .replace(/\bstatutory\s+declarations\b/gi, "mandatory declarations")
+            .replace(/\bstatutory\s+declaration\b/gi, "mandatory declaration")
+            .replace(/\bstatutory\s+criteria\b/gi, "compliance criteria")
+            .replace(/\bstatutory\s+verdict\b/gi, "compliance verdict")
+            .replace(/\bstatutory\s+wording\b/gi, "mandatory wording")
+            .replace(/\bstatutory\s+clause\b/gi, "mandatory clause")
+            .replace(/\bstatutory\s+tax\s+notice\b/gi, "mandatory tax notice")
+            .replace(/\bstatutory\b/gi, "legal")}
         </p>
       )}
 

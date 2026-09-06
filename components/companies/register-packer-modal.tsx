@@ -183,7 +183,7 @@ export function RegisterPackerModal({
                 Register Manufacturer / Pre-Packer
               </h2>
               <p className="text-[11px] text-[#64748B]">
-                Statutory certificate entry under Rule 27, PCR 2011.
+                Official registration entry under Rule 27, PCR 2011.
               </p>
             </div>
           </div>

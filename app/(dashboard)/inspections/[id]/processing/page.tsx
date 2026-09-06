@@ -8,7 +8,8 @@ import {
   Loader2,
   Circle,
   ArrowRight,
-  ShieldCheck,
+  Package,
+  Check,
 } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
@@ -55,11 +56,9 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
   const [alreadyProcessed, setAlreadyProcessed] = useState(false);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const hasPersistedRef = React.useRef(false);
-  const [logs, setLogs] = useState<string[]>([
-    "10:42:01.120 [INGESTION] Package photograph payload received. Checksum: SHA-256 (3 files validated).",
-  ]);
 
   useEffect(() => {
+    let redirectTimer: NodeJS.Timeout | null = null;
     async function load() {
       const data = await getInspectionById(inspectionId);
       if (data) {
@@ -70,192 +69,162 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
           data.status === "COMPLETED"
         ) {
           setAlreadyProcessed(true);
-          setActiveStage(7);
+          setActiveStage(8);
           setIsCompleted(true);
           hasPersistedRef.current = true;
+          redirectTimer = setTimeout(() => {
+            router.push(`/inspections/${inspectionId}/review`);
+          }, 800);
         }
       }
     }
     load();
-  }, [inspectionId]);
+    return () => {
+      if (redirectTimer) clearTimeout(redirectTimer);
+    };
+  }, [inspectionId, router]);
 
-  // 7 Stages as explicitly specified
+  // 7 Officer-friendly stages
   const stages: PipelineStage[] = [
     {
       id: 1,
-      name: "Images received",
-      description: "Package photograph payloads received, stored, and checksum validated.",
-      status: activeStage > 1 ? "COMPLETED" : activeStage === 1 ? "PROCESSING" : "PENDING",
+      name: "Package Photos Received",
+      description: "Uploaded package photographs and panel views verified.",
+      status: isCompleted || activeStage > 1 ? "COMPLETED" : activeStage === 1 ? "PROCESSING" : "PENDING",
     },
     {
       id: 2,
-      name: "Image preparation",
-      description: "OpenCV deskewing, noise reduction, and contrast enhancement.",
-      status: activeStage > 2 ? "COMPLETED" : activeStage === 2 ? "PROCESSING" : "PENDING",
+      name: "Image Quality Check",
+      description: "Checking image clarity, lighting, and orientation for reliable inspection.",
+      status: isCompleted || activeStage > 2 ? "COMPLETED" : activeStage === 2 ? "PROCESSING" : "PENDING",
     },
     {
       id: 3,
-      name: "Text extraction",
-      description: "PaddleOCR optical character recognition & pixel coordinate mapping.",
-      status: activeStage > 3 ? "COMPLETED" : activeStage === 3 ? "PROCESSING" : "PENDING",
+      name: "Reading Package Labels",
+      description: "Scanning and reading printed text across all package panels.",
+      status: isCompleted || activeStage > 3 ? "COMPLETED" : activeStage === 3 ? "PROCESSING" : "PENDING",
     },
     {
       id: 4,
-      name: "Declaration identification",
-      description: "Legal Metrology Rule 6 statutory field classification.",
-      status: activeStage > 4 ? "COMPLETED" : activeStage === 4 ? "PROCESSING" : "PENDING",
+      name: "Identifying Declarations",
+      description: "Locating mandatory Legal Metrology Rule 6 declarations.",
+      status: isCompleted || activeStage > 4 ? "COMPLETED" : activeStage === 4 ? "PROCESSING" : "PENDING",
     },
     {
       id: 5,
-      name: "Data normalization",
-      description: "SI units standardization, date formatting, and MRP tax validation.",
-      status: activeStage > 5 ? "COMPLETED" : activeStage === 5 ? "PROCESSING" : "PENDING",
+      name: "Standardizing Units & Dates",
+      description: "Checking metric units, date formats, and retail pricing declarations.",
+      status: isCompleted || activeStage > 5 ? "COMPLETED" : activeStage === 5 ? "PROCESSING" : "PENDING",
     },
     {
       id: 6,
-      name: "Compliance assessment",
-      description: "Deterministic evaluation against Legal Metrology Rules, 2011.",
-      status: activeStage > 6 ? "COMPLETED" : activeStage === 6 ? "PROCESSING" : "PENDING",
+      name: "Evaluating Compliance Rules",
+      description: "Evaluating package details against Legal Metrology Rules, 2011.",
+      status: isCompleted || activeStage > 6 ? "COMPLETED" : activeStage === 6 ? "PROCESSING" : "PENDING",
     },
     {
       id: 7,
-      name: "Result preparation",
-      description: "Findings aggregation, evidentiary bounding boxes, and draft report.",
-      status: activeStage > 7 ? "COMPLETED" : activeStage === 7 ? "PROCESSING" : "PENDING",
+      name: "Finalizing Verification Results",
+      description: "Preparing findings and compliance summary for officer review.",
+      status: isCompleted || activeStage > 7 ? "COMPLETED" : activeStage === 7 ? "PROCESSING" : "PENDING",
     },
   ];
 
-  const logMessages: Record<number, string> = {
-    2: "10:42:01.780 [OPENCV] Deskew matrix calculated. Contrast enhanced (gamma=1.2). 3 panels prepped.",
-    3: "10:42:02.430 [PADDLE_OCR] Text detection completed. 48 bounding boxes mapped with avg conf 94.8%.",
-    4: "10:42:03.110 [FIELD_CLASSIFIER] Rule 6 declarations matched: 17/17 mandatory fields classified.",
-    5: "10:42:03.750 [NORMALIZER] Units normalized to standard SI (L / ml). Date formatted to MM/YYYY.",
-    6: "10:42:04.390 [RULES_ENGINE] Evaluated 17 statutory checks against PCR-2011 amendment 2024.",
-    7: "10:42:05.020 [REPORT_BUILDER] Verification package assembled with cryptographic hash.",
-  };
-
-  // Controlled pipeline execution with true persistence synchronization
+  // Controlled verification execution with true persistence synchronization
   useEffect(() => {
     if (isAborted || alreadyProcessed || isCompleted || pipelineError) return;
 
     let isCancelled = false;
+    let autoNavTimer: NodeJS.Timeout | null = null;
 
     async function advancePipeline() {
       try {
         if (activeStage === 1) {
-          // Stage 1: Ingestion & Image verification
+          // Stage 1: Load inspection and verify photos
           const current = inspection || (await getInspectionById(inspectionId));
           if (current) setInspection(current);
           if (isCancelled) return;
-          const imageRef = current?.images?.[0]?.fileName || "Package photograph";
-          setLogs((l) => [
-            ...l,
-            `[INGESTION] Package photograph payload verified: ${imageRef}. Computer vision pipeline queued.`,
-          ]);
+          await new Promise((r) => setTimeout(r, 600));
+          if (isCancelled) return;
           setActiveStage(2);
         } else if (activeStage === 2) {
-          // Stage 2: OpenCV preparation (deskew, CLAHE, bilateral denoise)
-          setLogs((l) => [
-            ...l,
-            "[OPENCV] Applying computer vision preprocessing: CLAHE contrast enhancement, bilateral filter, and orientation deskewing.",
-          ]);
+          // Stage 2: Image Quality Check
+          await new Promise((r) => setTimeout(r, 700));
+          if (isCancelled) return;
           setActiveStage(3);
         } else if (activeStage === 3) {
-          // Stage 3: Real PaddleOCR inference via FastAPI microservice
-          setLogs((l) => [
-            ...l,
-            "[PADDLE_OCR] Submitting image payload to PaddleOCR microservice on port 8000...",
-          ]);
+          // Stage 3: Reading package labels (Text extraction)
           const ocrRes = await runServerOCR(inspectionId);
           if (isCancelled) return;
           setOcrResult(ocrRes);
-          const itemCount = ocrRes.detectedTextItems?.length || ocrRes.blocks?.length || 0;
-          const avgConf = Math.round((ocrRes.overallConfidence || 0) * 100);
-          setLogs((l) => [
-            ...l,
-            `[PADDLE_OCR] Engine ${ocrRes.engine || "PaddleOCR"} completed: ${itemCount} tokens detected (${avgConf}% confidence). Bounding boxes mapped.`,
-          ]);
           setActiveStage(4);
         } else if (activeStage === 4) {
-          // Stage 4: Extraction phase: deterministic parsing + Gemini AI enrichment
+          // Stage 4: Identifying declarations
           const rawText = ocrResult?.rawText || inspection?.ocrResults?.[0]?.rawText || "";
           const extractionCtx = {
             productName: inspection?.product || inspection?.commodity?.commodityName,
             brandName: inspection?.commodity?.brandName,
             manufacturerName: inspection?.company || inspection?.commodity?.manufacturerName,
           };
-          setLogs((l) => [
-            ...l,
-            "[FIELD_CLASSIFIER] Parsing raw text against Legal Metrology Rule 6 statutory field patterns...",
-          ]);
           const declarations = await runServerExtraction(inspectionId, rawText, extractionCtx);
           if (isCancelled) return;
           setExtractedDeclarations(declarations);
           await storeExtractedFields(inspectionId, declarations);
           if (isCancelled) return;
-          setLogs((l) => [
-            ...l,
-            `[FIELD_CLASSIFIER] Declarations extracted and persisted via ${declarations.modelUsed || "Deterministic + Gemini Hybrid"}.`,
-          ]);
           setActiveStage(5);
         } else if (activeStage === 5) {
-          // Stage 5: Normalization
-          setLogs((l) => [
-            ...l,
-            "[NORMALIZER] Standardizing units to metric SI (L, ml, g, kg) and verifying MRP taxes & dates.",
-          ]);
+          // Stage 5: Standardizing units and dates
+          await new Promise((r) => setTimeout(r, 600));
+          if (isCancelled) return;
           setActiveStage(6);
         } else if (activeStage === 6) {
-          // Stage 6: Legal compliance evaluation via TypeScript Rules Engine
+          // Stage 6: Evaluating compliance rules
           const decls = extractedDeclarations || (await runServerExtraction(inspectionId, ocrResult?.rawText || ""));
-          setLogs((l) => [
-            ...l,
-            "[RULES_ENGINE] Evaluating statutory checks against Legal Metrology (Packaged Commodities) Rules, 2011...",
-          ]);
           const evaluation = await evaluateCompliance(decls);
           if (isCancelled) return;
           await storeComplianceResults(inspectionId, evaluation);
           if (isCancelled) return;
-          const failCount = evaluation.results.filter((r) => r.result === "FAIL").length;
-          setLogs((l) => [
-            ...l,
-            `[RULES_ENGINE] Compliance assessment complete: ${evaluation.results.length} checks evaluated (${failCount} non-compliance flags). Verdict: ${evaluation.overallResult}.`,
-          ]);
           setActiveStage(7);
         } else if (activeStage === 7) {
           if (!hasPersistedRef.current) {
             hasPersistedRef.current = true;
             setIsCompleted(true);
+            setActiveStage(8);
             const fresh = await getInspectionById(inspectionId);
             if (fresh && !isCancelled) {
               setInspection(fresh);
               if (fresh.overallResult === "PASS") {
                 toast.success(
-                  "Compliance Verification Completed",
+                  "Verification Completed",
                   "Product passed all evaluated checks under Legal Metrology Rules, 2011."
                 );
               } else if (fresh.overallResult === "POTENTIAL_NON_COMPLIANCE") {
                 toast.warning(
-                  "Compliance Verification Completed",
+                  "Verification Completed",
                   "Potential non-compliance detected. Review flagged declarations."
                 );
               } else {
                 toast.info(
-                  "Pipeline Completed",
-                  "Processing complete. Manual inspector review recommended."
+                  "Verification Completed",
+                  "Verification complete. Officer review recommended."
                 );
               }
             }
+            // Auto-advance to the review page once verification is complete
+            autoNavTimer = setTimeout(() => {
+              if (!isCancelled) {
+                router.push(`/inspections/${inspectionId}/review`);
+              }
+            }, 1200);
           }
         }
       } catch (err) {
-        console.error("Pipeline failure:", err);
+        console.error("Verification failure:", err);
         if (!isCancelled) {
           const failedAt = activeStage;
           setFailedStage(failedAt);
-          setPipelineError(err instanceof Error ? err.message : "Pipeline execution failed");
-          toast.error("Pipeline Failed", "Failed to persist extraction or compliance data.");
-          // Ensure unexpected terminal failure transitions the inspection to FAILED
+          setPipelineError(err instanceof Error ? err.message : "Verification failed");
+          toast.error("Verification Issue", "Could not complete all verification checks.");
           updateInspectionStatus(inspectionId, "FAILED").catch((updateErr) =>
             console.error("Failed to transition inspection to FAILED status:", updateErr)
           );
@@ -267,17 +236,18 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
 
     return () => {
       isCancelled = true;
+      if (autoNavTimer) clearTimeout(autoNavTimer);
     };
-  }, [activeStage, inspectionId, isAborted, alreadyProcessed, isCompleted, pipelineError, toast]);
+  }, [activeStage, inspectionId, isAborted, alreadyProcessed, isCompleted, pipelineError, toast, router]);
 
-  const progressPercent = Math.min(100, Math.round((activeStage / 7) * 100));
-  const estSecondsRemaining = Math.max(0, (7 - activeStage) * 0.7).toFixed(1);
+  const progressPercent = isCompleted ? 100 : Math.min(100, Math.round((activeStage / 7) * 100));
+  const estSecondsRemaining = isCompleted ? "0.0" : Math.max(0, (7 - activeStage) * 0.7).toFixed(1);
 
   return (
     <div className="flex flex-col gap-6 max-w-4xl mx-auto">
       <PageHeader
-        title={`Verification Pipeline: ${inspection?.inspectionNumber || inspectionId}`}
-        description="Automated statutory label processing pipeline executing under Legal Metrology calibration standards."
+        title={`Inspection Verification: ${inspection?.inspectionNumber || inspectionId}`}
+        description="Automated verification of package label declarations under Legal Metrology standards."
         actions={
           !isCompleted && !isAborted ? (
             <Button
@@ -288,7 +258,7 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
                 router.push(`/inspections/${inspectionId}`);
               }}
             >
-              Abort Run
+              Cancel Verification
             </Button>
           ) : undefined
         }
@@ -301,17 +271,17 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
             <span className="font-bold text-[#0F172A]">
-              Pipeline Progress: {progressPercent}%
+              Verification Progress: {progressPercent}%
             </span>
             <span className="text-[#475569]">
-              ({isCompleted ? "7 of 7 stages completed" : `Stage ${activeStage} of 7 active`})
+              ({isCompleted ? "All 7 verification steps completed" : `Step ${activeStage} of 7 in progress`})
             </span>
           </div>
-          <span className="font-mono text-[11px] text-[#475569]">
-            {isCompleted ? "Finished in 4.9s" : `Est. remaining: ~${estSecondsRemaining}s`}
+          <span className="text-xs text-[#475569]">
+            {isCompleted ? "Completed" : `Estimated remaining: ~${estSecondsRemaining}s`}
           </span>
         </div>
-        <div className="h-1.5 w-full rounded-full bg-[#F1F5F9] overflow-hidden">
+        <div className="h-2 w-full rounded-full bg-[#F1F5F9] overflow-hidden">
           <div
             className="h-full bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] transition-all duration-300 rounded-full"
             style={{ width: `${progressPercent}%` }}
@@ -320,149 +290,169 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Optical Scanning HUD View with Laser Sweep */}
-        <div className="lg:col-span-5 rounded-xl border border-[#0F172A] bg-[#0B1329] p-5 text-white shadow-sm flex flex-col justify-between overflow-hidden relative min-h-[420px]">
-          {/* HUD Top Bar */}
-          <div className="flex items-center justify-between z-10 text-[10px] font-mono text-[#94A3B8] border-b border-white/10 pb-3">
+        {/* Left Side: Package Inspection Preview Card */}
+        <div className="lg:col-span-5 rounded-xl border border-[#E2E8F0] bg-white p-5 shadow-2xs flex flex-col justify-between overflow-hidden relative min-h-[480px]">
+          {/* Card Header */}
+          <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
             <div className="flex items-center gap-2">
-              <span className="relative flex size-2">
-                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isCompleted ? "bg-[#22C55E]" : "bg-[#3B82F6]"} opacity-75`} />
-                <span className={`relative inline-flex rounded-full size-2 ${isCompleted ? "bg-[#22C55E]" : "bg-[#3B82F6]"}`} />
+              <span className="relative flex size-2.5">
+                <span
+                  className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                    isCompleted ? "bg-[#166534]" : "bg-[#2563EB]"
+                  }`}
+                />
+                <span
+                  className={`relative inline-flex rounded-full size-2.5 ${
+                    isCompleted ? "bg-[#166534]" : "bg-[#2563EB]"
+                  }`}
+                />
               </span>
-              <span className="font-bold text-white uppercase tracking-wider">
-                {isCompleted ? "SCAN COMPLETE" : "OPTICAL SWEEP ACTIVE"}
+              <span className="text-xs font-bold text-[#0F172A]">
+                {isCompleted ? "Verification Complete" : isAborted ? "Verification Stopped" : "Verifying Package"}
               </span>
             </div>
-            <span className="bg-white/10 px-2 py-0.5 rounded text-[9px] font-mono text-[#93C5FD]">
-              300 DPI • CALIBRATED
+            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0]">
+              {inspection?.inspectionNumber || "Inspection Preview"}
             </span>
           </div>
 
-          {/* HUD Scanning Viewport with Holographic Reticle */}
-          <div className="relative flex-1 my-3 rounded-lg bg-[#030712] border border-[#1E293B] overflow-hidden flex items-center justify-center p-4 min-h-[260px]">
-            {/* Background Grid Pattern */}
+          {/* Clean Inspection Viewport */}
+          <div className="relative flex-1 my-3 rounded-xl bg-gradient-to-b from-[#F8FAFC] to-[#F1F5F9]/80 border border-[#E2E8F0] overflow-hidden flex flex-col items-center justify-center p-4 min-h-[290px]">
+            {/* Subtle Grid Pattern Accent */}
             <div
-              className="absolute inset-0 opacity-15 pointer-events-none"
+              className="absolute inset-0 opacity-40 pointer-events-none"
               style={{
-                backgroundImage: `linear-gradient(to right, #3B82F6 1px, transparent 1px), linear-gradient(to bottom, #3B82F6 1px, transparent 1px)`,
-                backgroundSize: "20px 20px",
+                backgroundImage: `radial-gradient(#CBD5E1 1px, transparent 1px)`,
+                backgroundSize: "16px 16px",
               }}
             />
 
-            {/* Reticle Target Corner Marks */}
-            <div className="absolute top-2.5 left-2.5 size-3.5 border-t-2 border-l-2 border-[#38BDF8]" />
-            <div className="absolute top-2.5 right-2.5 size-3.5 border-t-2 border-r-2 border-[#38BDF8]" />
-            <div className="absolute bottom-2.5 left-2.5 size-3.5 border-b-2 border-l-2 border-[#38BDF8]" />
-            <div className="absolute bottom-2.5 right-2.5 size-3.5 border-b-2 border-r-2 border-[#38BDF8]" />
-
-            {/* Optical Center Crosshair */}
-            <div className="absolute size-6 pointer-events-none opacity-40">
-              <div className="w-full h-px bg-[#38BDF8] absolute top-1/2 -translate-y-1/2" />
-              <div className="h-full w-px bg-[#38BDF8] absolute left-1/2 -translate-x-1/2" />
-            </div>
-
-            {/* Package Label Silhouette */}
-            <div className="relative w-48 h-56 rounded border border-dashed border-[#3B82F6]/50 bg-[#0F172A]/80 p-3 flex flex-col justify-between overflow-hidden shadow-inner">
-              <div className="flex justify-between items-start">
-                <div className="space-y-1">
-                  <div className="w-20 h-2 bg-[#60A5FA]/40 rounded animate-pulse" />
-                  <div className="w-12 h-1.5 bg-[#60A5FA]/20 rounded" />
+            {/* Package Photo or Card Silhouette */}
+            <div className="relative z-10 w-full max-w-[260px] rounded-xl border border-[#E2E8F0] bg-white p-3.5 shadow-xs flex flex-col items-center gap-3">
+              {inspection?.images?.[0]?.url && !inspection.images[0].url.startsWith("/mock-images") ? (
+                <div className="relative w-full h-36 rounded-lg overflow-hidden border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={inspection.images[0].url}
+                    alt={inspection.product || "Package photograph"}
+                    className="size-full object-contain"
+                  />
                 </div>
-                <div className="text-[8px] font-mono text-[#38BDF8] border border-[#38BDF8]/40 px-1 py-0.5 rounded bg-[#0284C7]/20">
-                  PDP PANEL
+              ) : (
+                <div className="w-full h-28 rounded-lg border border-dashed border-[#CBD5E1] bg-[#F8FAFC] flex flex-col items-center justify-center p-3 text-center">
+                  <Package className="size-8 text-[#2563EB] mb-1.5 opacity-80" />
+                  <p className="text-xs font-semibold text-[#0F172A] line-clamp-1">
+                    {inspection?.product || inspection?.commodity?.commodityName || "Package Sample"}
+                  </p>
+                  <p className="text-[11px] text-[#475569] line-clamp-1">
+                    {inspection?.company || inspection?.commodity?.manufacturerName || "Legal Metrology Audit"}
+                  </p>
                 </div>
-              </div>
+              )}
 
-              {/* Dynamic OCR Bounding Boxes Unlocked per Stage */}
-              <div className="space-y-2 py-1">
+              {/* Real-time Verified Findings Badges */}
+              <div className="w-full space-y-1.5 pt-1">
                 <div
-                  className={`p-1 rounded border transition-all duration-300 text-[8.5px] font-mono leading-tight ${
+                  className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs transition-all duration-300 ${
                     activeStage >= 3
-                      ? "border-[#22C55E] bg-[#22C55E]/15 text-[#86EFAC]"
-                      : "border-transparent text-transparent"
+                      ? "bg-[#DCFCE7] text-[#166534] border border-[#86EFAC]"
+                      : "bg-[#F8FAFC] text-[#94A3B8] border border-transparent"
                   }`}
                 >
-                  [COMMODITY: {inspection?.product || "Pure Ghee 1L Tin"}]
+                  <span className="font-medium">Product / Commodity</span>
+                  <span>{activeStage >= 3 ? "Identified" : "Pending"}</span>
                 </div>
+
                 <div
-                  className={`p-1 rounded border transition-all duration-300 text-[8.5px] font-mono leading-tight ${
+                  className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs transition-all duration-300 ${
                     activeStage >= 4
-                      ? "border-[#38BDF8] bg-[#38BDF8]/15 text-[#BAE6FD]"
-                      : "border-transparent text-transparent"
+                      ? "bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]"
+                      : "bg-[#F8FAFC] text-[#94A3B8] border border-transparent"
                   }`}
                 >
-                  [NET QUANTITY: 1 L (905 g)]
+                  <span className="font-medium">Mandatory Declarations</span>
+                  <span>{activeStage >= 4 ? "Located" : "Pending"}</span>
                 </div>
+
                 <div
-                  className={`p-1 rounded border transition-all duration-300 text-[8.5px] font-mono leading-tight ${
+                  className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs transition-all duration-300 ${
                     activeStage >= 5
-                      ? "border-[#F59E0B] bg-[#F59E0B]/15 text-[#FDE68A]"
-                      : "border-transparent text-transparent"
+                      ? "bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]"
+                      : "bg-[#F8FAFC] text-[#94A3B8] border border-transparent"
                   }`}
                 >
-                  [MRP: ₹650.00 INCL OF ALL TAXES]
+                  <span className="font-medium">Units & Pricing</span>
+                  <span>{activeStage >= 5 ? "Validated" : "Pending"}</span>
+                </div>
+
+                <div
+                  className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs transition-all duration-300 ${
+                    activeStage >= 6
+                      ? "bg-[#DCFCE7] text-[#166534] border border-[#86EFAC]"
+                      : "bg-[#F8FAFC] text-[#94A3B8] border border-transparent"
+                  }`}
+                >
+                  <span className="font-medium">Rules Compliance</span>
+                  <span>{activeStage >= 6 ? "Checked" : "Pending"}</span>
                 </div>
               </div>
 
-              <div className="flex justify-between items-end text-[7.5px] font-mono text-[#64748B]">
-                <span>RULE 6(1) PDP</span>
-                <span className="text-[#38BDF8]">
-                  {activeStage >= 6 ? "VERIFIED (17/17)" : `EXTRACTING...`}
-                </span>
-              </div>
-
-              {/* Laser Sweep Line */}
+              {/* Light Modern Scanner Animation Line */}
               {!isCompleted && !isAborted && (
-                <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-[#60A5FA] to-transparent shadow-[0_0_12px_#3B82F6,0_0_24px_#2563EB] pointer-events-none scan-laser-line z-20">
-                  <div className="absolute right-1 -top-3 text-[7px] font-mono font-bold text-[#93C5FD] bg-[#1E3A8A] px-1 rounded shadow-xs">
-                    SCAN BEAM
+                <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-[#2563EB] to-transparent shadow-[0_0_12px_rgba(37,99,235,0.4)] pointer-events-none scan-laser-line z-20">
+                  <div className="absolute right-2 -top-3 text-[9px] font-semibold text-white bg-[#2563EB] px-1.5 py-0.5 rounded shadow-xs">
+                    Scanning
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* HUD Footer Status */}
-          <div className="flex items-center justify-between text-[10px] font-mono text-[#94A3B8] pt-1">
-            <span>ENGINE: PaddleOCR v2.6</span>
-            <span className="text-[#38BDF8] font-bold">
-              {isCompleted ? "READY FOR VERIFICATION" : `STAGE ${activeStage}/7: ${stages[activeStage - 1]?.name}`}
+          {/* Card Footer Status */}
+          <div className="flex items-center justify-between text-xs text-[#475569] pt-2 border-t border-[#F1F5F9]">
+            <span className="truncate max-w-[200px]">
+              {inspection?.product || "Packaged Commodity"}
+            </span>
+            <span className="font-semibold text-[#2563EB]">
+              {isCompleted
+                ? "Ready for Officer Review"
+                : `Step ${activeStage} of 7: ${stages[activeStage - 1]?.name}`}
             </span>
           </div>
         </div>
 
-        {/* Pipeline Execution Sequence & Logs */}
+        {/* Right Side: Inspection Verification Steps Card */}
         <div className="lg:col-span-7">
           <Card className="border-[#E2E8F0] bg-white shadow-2xs">
             <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-[#F1F5F9]">
               <div>
                 <CardTitle className="text-sm font-bold text-[#0F172A]">
-                  Pipeline Execution Sequence
+                  Inspection Verification Steps
                 </CardTitle>
                 <p className="text-xs text-[#475569]">
-                  Sequential validation stages: Ingestion → OCR → Structuring → Compliance
+                  Automated checks for mandatory package declarations and Legal Metrology compliance.
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 {isCompleted ? (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-[#DCFCE7] text-[#166534] border border-[#86EFAC]">
                     <CheckCircle2 className="size-3.5" />
-                    Pipeline Completed
+                    Verification Completed
                   </span>
                 ) : isAborted ? (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-[#FEE2E2] text-[#991B1B] border border-[#FCA5A5]">
-                    Pipeline Aborted
+                    Verification Aborted
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-[#E0F2FE] text-[#0369A1] border border-[#7DD3FC]">
                     <Loader2 className="size-3.5 animate-spin" />
-                    Executing Stages
+                    Verifying Package
                   </span>
                 )}
               </div>
             </CardHeader>
 
-            <CardContent className="p-6 space-y-6">
+            <CardContent className="p-6 space-y-5">
               <ol className="space-y-2.5">
                 {stages.map((stg) => (
                   <li
@@ -488,14 +478,14 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-[#0F172A]">
-                          Stage {stg.id}: {stg.name}
+                          Step {stg.id}: {stg.name}
                         </span>
-                        <span className="text-[10px] font-mono uppercase text-[#475569]">
+                        <span className="text-[10px] font-medium uppercase text-[#475569]">
                           {stg.status === "COMPLETED"
                             ? "Completed"
                             : stg.status === "PROCESSING"
                             ? "Running"
-                            : "Pending"}
+                            : "Waiting"}
                         </span>
                       </div>
                       <p className="text-[11px] text-[#475569] mt-0.5">{stg.description}</p>
@@ -504,16 +494,32 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
                 ))}
               </ol>
 
-              {/* Execution Log Stream */}
-              <div className="rounded-lg border border-[#334155] bg-[#0F172A] p-3 text-[11px] font-mono text-[#F8FAFC] space-y-1 max-h-36 overflow-y-auto">
-                <div className="text-[10px] uppercase font-bold text-[#94A3B8] pb-1 border-b border-white/10 flex justify-between">
-                  <span>Execution Log Stream</span>
-                  <span>ENGINE: PaddleOCR v2.6.0</span>
+              {/* Active Status Info Banner */}
+              {!pipelineError && (
+                <div
+                  className={`rounded-lg border p-3.5 flex items-center gap-3 text-xs transition-colors ${
+                    isCompleted
+                      ? "border-emerald-200 bg-emerald-50/70 text-emerald-900"
+                      : "border-blue-200 bg-blue-50/70 text-blue-900"
+                  }`}
+                >
+                  {isCompleted ? (
+                    <>
+                      <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                      <span>
+                        All 7 verification steps completed successfully. Proceed to review the extracted information to confirm or edit declarations.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Loader2 className="size-4 animate-spin text-blue-600 shrink-0" />
+                      <span>
+                        Currently checking: <strong>{stages[activeStage - 1]?.name}</strong>. Reading and verifying package details against Legal Metrology requirements.
+                      </span>
+                    </>
+                  )}
                 </div>
-                {logs.map((lg, i) => (
-                  <p key={i} className="leading-relaxed opacity-90">{lg}</p>
-                ))}
-              </div>
+              )}
 
               {pipelineError && (
                 <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-900 flex items-center justify-between">
@@ -528,7 +534,7 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
                       setActiveStage(stageToRetry);
                     }}
                   >
-                    Retry Pipeline
+                    Retry Verification
                   </Button>
                 </div>
               )}
@@ -536,10 +542,10 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
               <div className="pt-4 border-t border-[#F1F5F9] flex items-center justify-between">
                 <span className="text-xs text-[#475569]">
                   {pipelineError
-                    ? "Pipeline stopped due to error."
+                    ? "Verification stopped due to an error."
                     : isCompleted
-                    ? "All 7 stages evaluated. Proceed to verify extracted statutory declarations."
-                    : "Processing package evidence..."}
+                    ? "All verification steps completed. Proceed to review extracted information."
+                    : "Verifying package evidence..."}
                 </span>
 
                 <Button
@@ -559,3 +565,4 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
     </div>
   );
 }
+

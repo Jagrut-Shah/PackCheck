@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { ApiResponse } from '@/lib/types/common'
+import { requireAuth, verifyInspectionOwnership } from '@/lib/auth/server'
 
 interface ReportDataResponse {
   inspection: any
@@ -16,6 +17,9 @@ export async function GET(
 ): Promise<NextResponse> {
   const db = supabaseAdmin || supabase;
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { id: inspectionId } = await context.params
 
     if (!inspectionId) {
@@ -31,11 +35,27 @@ export async function GET(
       )
     }
 
+    // Verify ownership
+    const ownership = await verifyInspectionOwnership(inspectionId, user.id);
+    if (!ownership.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INSPECTION_NOT_FOUND',
+            message: ownership.errorMessage || `Inspection ${inspectionId} not found`
+          }
+        } as ApiResponse<null>,
+        { status: ownership.errorStatus || 404 }
+      )
+    }
+
     // Fetch inspection
     const { data: inspection, error: inspectionError } = await db
       .from('inspections')
       .select('*')
       .eq('id', inspectionId)
+      .eq('inspector_id', user.id)
       .single()
 
     if (inspectionError || !inspection) {

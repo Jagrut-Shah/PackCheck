@@ -7,6 +7,7 @@ import {
   recordInspectionCompanyLink,
   getAllInspectionCompanyLinks
 } from '@/lib/companies/storage'
+import { requireAuth } from '@/lib/auth/server'
 
 import { processImageOCR } from '@/lib/ocr'
 
@@ -53,6 +54,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const uploadedStoragePaths: string[] = []
 
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+    const inspectorId = user.id;
+
     // --------------------------------------------------------
     // 1. Validate content type
     // --------------------------------------------------------
@@ -143,25 +148,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // --------------------------------------------------------
-    // 4. Validate inspector_id
+    // 4. Enforce inspector_id from authenticated user session
     // --------------------------------------------------------
-
-    const inspectorId = (
-      formData.get('inspector_id') as string
-    )?.trim()
-
-    if (!inspectorId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'MISSING_INSPECTOR_ID',
-            message: 'inspector_id is required.',
-          },
-        } as ApiResponse<null>,
-        { status: 400 }
-      )
-    }
+    // inspectorId is authoritatively bound to user.id, preventing client spoofing.
 
     // --------------------------------------------------------
     // 5. Validate product_type
@@ -225,7 +214,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         )
 
         const storageFilename =
-          `${timestamp}_${index}_${cleanName}`
+          `${inspectorId}/${timestamp}_${index}_${cleanName}`
 
         const { error: storageError } = await storageClient
           .from('product-images')
@@ -339,7 +328,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (manufacturerName) {
       try {
-        const packer = await ensurePackerForInspection(manufacturerName, brandName)
+        const packer = await ensurePackerForInspection(manufacturerName, brandName, undefined, inspectorId)
         if (packer) {
           linkedPackerId = packer.id
           linkedCompanyName = packer.name
@@ -704,6 +693,9 @@ export async function GET(
   request: NextRequest
 ): Promise<NextResponse> {
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+
     const searchParams =
       request.nextUrl.searchParams
 
@@ -720,18 +712,22 @@ export async function GET(
     const status =
       searchParams.get('status')
 
+    const db = supabaseAdmin || supabase;
+
     let query =
-      supabase
+      db
         .from('inspections')
         .select('*')
+        .eq('inspector_id', user.id)
 
     let countQuery =
-      supabase
+      db
         .from('inspections')
         .select('*', {
           count: 'exact',
           head: true,
         })
+        .eq('inspector_id', user.id)
 
     if (status) {
       query = query.eq('status', status)
@@ -839,6 +835,9 @@ export async function GET(
           const companyId = inspection.company_id || link?.companyId || "";
 
           return {
+            id:
+              inspection.id,
+
             inspection_id:
               inspection.id,
 

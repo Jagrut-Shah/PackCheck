@@ -15,6 +15,7 @@ import {
 
 export interface RegisteredPackerEntity {
   id: string;
+  user_id?: string;
   name: string;
   normalized_name: string;
   brand?: string;
@@ -31,6 +32,7 @@ export interface RegisteredPackerEntity {
 }
 
 export interface CreatePackerInput {
+  user_id?: string;
   name: string;
   brand?: string;
   registration_number: string;
@@ -175,24 +177,32 @@ function writeLocalPackers(packers: RegisteredPackerEntity[]): void {
 }
 
 /**
- * Get all registered packers, supporting search and state filtering.
+ * Get all registered packers, supporting search, state filtering, and user isolation.
  */
 export async function getAllPackers(params?: {
   searchQuery?: string;
   state?: string;
+  userId?: string;
 }): Promise<RegisteredPackerEntity[]> {
   const db = supabaseAdmin || supabase;
   let packers: RegisteredPackerEntity[] = [];
 
   try {
-    const { data, error } = await db
+    let query = db
       .from("registered_packers")
       .select("*")
       .order("created_at", { ascending: false });
 
+    if (params?.userId) {
+      query = query.eq("user_id", params.userId);
+    }
+
+    const { data, error } = await query;
+
     if (!error && Array.isArray(data)) {
       packers = data.map((d) => ({
         id: d.id,
+        user_id: d.user_id,
         name: d.name,
         normalized_name: d.normalized_name || normalizeCompanyName(d.name),
         brand: d.brand || "",
@@ -210,9 +220,15 @@ export async function getAllPackers(params?: {
     } else {
       // Fallback if table not migrated yet
       packers = readLocalPackers();
+      if (params?.userId) {
+        packers = packers.filter((p) => p.user_id === params.userId);
+      }
     }
   } catch {
     packers = readLocalPackers();
+    if (params?.userId) {
+      packers = packers.filter((p) => p.user_id === params.userId);
+    }
   }
 
   // Filter in memory for precise text search & state
@@ -289,11 +305,12 @@ export async function getPackerById(
  */
 export async function findPackerByNameOrReg(
   nameOrReg: string,
-  brand?: string
+  brand?: string,
+  userId?: string
 ): Promise<RegisteredPackerEntity | null> {
   if (!nameOrReg) return null;
 
-  const all = await getAllPackers();
+  const all = await getAllPackers({ userId });
   const match = all.find((candidate) =>
     isCompanyMatch(candidate, nameOrReg, brand)
   );
@@ -317,13 +334,13 @@ export async function createPacker(
     throw new Error("Rule 27 Registration Certificate Number is required.");
   }
 
-  // Check for duplicate
-  const existing = await findPackerByNameOrReg(input.registration_number);
+  // Check for duplicate within the user's scope
+  const existing = await findPackerByNameOrReg(input.registration_number, undefined, input.user_id);
   if (existing) {
     return { entity: existing, isDuplicate: true };
   }
 
-  const existingByName = await findPackerByNameOrReg(input.name, input.brand);
+  const existingByName = await findPackerByNameOrReg(input.name, input.brand, input.user_id);
   if (existingByName) {
     return { entity: existingByName, isDuplicate: true };
   }
@@ -333,6 +350,7 @@ export async function createPacker(
 
   const newRecord: RegisteredPackerEntity = {
     id: `comp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    user_id: input.user_id,
     name: input.name.trim(),
     normalized_name: normName,
     brand: input.brand?.trim() || "",
@@ -354,6 +372,7 @@ export async function createPacker(
       .from("registered_packers")
       .insert([
         {
+          user_id: newRecord.user_id,
           name: newRecord.name,
           normalized_name: newRecord.normalized_name,
           brand: newRecord.brand,
@@ -394,13 +413,14 @@ export async function createPacker(
 export async function ensurePackerForInspection(
   companyName: string,
   brandName?: string,
-  address?: string
+  address?: string,
+  userId?: string
 ): Promise<RegisteredPackerEntity | null> {
   if (!companyName || companyName.trim().length < 2) {
     return null;
   }
 
-  const existing = await findPackerByNameOrReg(companyName, brandName);
+  const existing = await findPackerByNameOrReg(companyName, brandName, userId);
   if (existing) {
     return existing;
   }
@@ -413,6 +433,7 @@ export async function ensurePackerForInspection(
   const autoRegNo = `IND-AUTO-${prefix || "REG"}-${Date.now().toString().slice(-4)}`;
 
   const { entity } = await createPacker({
+    user_id: userId,
     name: companyName.trim(),
     brand: brandName?.trim() || "",
     registration_number: autoRegNo,

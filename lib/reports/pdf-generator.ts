@@ -44,10 +44,10 @@ export async function generateVerificationReportPdf(
   const safeInspector = cleanPdfText(report.generatedBy || "Legal Metrology Department");
 
   // Set document metadata
-  doc.setTitle(`Verification Report - ${safeReportNum}`);
+  doc.setTitle(`Inspection Report - ${safeReportNum}`);
   doc.setAuthor(safeInspector);
-  doc.setSubject("Statutory Verification Report under Legal Metrology Act, 2009");
-  doc.setCreator("PackCheck AI Verification Platform");
+  doc.setSubject("Legal Metrology Inspection Report under Legal Metrology Act, 2009");
+  doc.setCreator("PackCheck AI Inspection Platform");
   doc.setProducer("PackCheck AI Engine v1.0");
 
   // Sign report cryptographically
@@ -113,7 +113,7 @@ export async function generateVerificationReportPdf(
   );
 
   drawSafeText(
-    "STATUTORY VERIFICATION CERTIFICATE",
+    "LEGAL METROLOGY INSPECTION REPORT",
     margin + 15,
     y - 47,
     11,
@@ -172,7 +172,7 @@ export async function generateVerificationReportPdf(
 
   drawSafeText("VERDICT", margin + 350, y - 18, 7.5, fontBold, rgb(0.35, 0.4, 0.45));
 
-  const verdictText = isPass ? "STATUTORY COMPLIANT" : "NON-COMPLIANCE DETECTED";
+  const verdictText = isPass ? "COMPLIANT (PASS)" : "NON-COMPLIANCE DETECTED";
   drawSafeText(verdictText, margin + 350, y - 34, 11, fontBold, statusColor);
 
   y -= 65;
@@ -291,7 +291,7 @@ export async function generateVerificationReportPdf(
 
   // 5. Compliance Findings & Rule Violations
   drawSafeText(
-    "STATUTORY COMPLIANCE FINDINGS & VIOLATION ASSESSMENT",
+    "COMPLIANCE FINDINGS & OBSERVATIONS",
     margin,
     y,
     8.5,
@@ -319,7 +319,7 @@ export async function generateVerificationReportPdf(
       color: rgb(0.95, 0.99, 0.96),
     });
     drawSafeText(
-      "No statutory violations detected. All evaluated Legal Metrology declarations conform to PCR 2011.",
+      "No compliance issues detected. All evaluated Legal Metrology declarations conform to PCR 2011.",
       margin + 10,
       y - 14,
       8,
@@ -334,8 +334,8 @@ export async function generateVerificationReportPdf(
       const badgeCol = isCritical ? rgb(0.75, 0.12, 0.12) : rgb(0.75, 0.45, 0.05);
 
       const ruleId = f.ruleNumber || f.ruleId || "RULE";
-      const title = f.title || (f as any).ruleName || "Statutory Check";
-      const message = f.description || f.expectedRequirement || (f as any).message || "Declaration does not conform to Legal Metrology statutory standards.";
+      const title = f.title || (f as any).ruleName || "Compliance Check";
+      const message = f.description || f.expectedRequirement || (f as any).message || "Declaration does not conform to Legal Metrology compliance standards.";
 
       drawSafeText(`[${f.severity || "MAJOR"}] ${ruleId}: ${title}`, margin + 6, y - 8, 8, fontBold, badgeCol);
       drawSafeText(cleanPdfText(message).slice(0, 95), margin + 14, y - 20, 7.5, fontRegular, rgb(0.25, 0.3, 0.35));
@@ -358,7 +358,7 @@ export async function generateVerificationReportPdf(
   });
 
   drawSafeText(
-    "CRYPTOGRAPHIC EVIDENTIARY VERIFICATION (SEC 65B COURT ADMISSIBILITY)",
+    "DIGITAL VERIFICATION RECORD (SEC 65B EVIDENCE RECORD)",
     margin + 10,
     y - 14,
     7.5,
@@ -399,12 +399,12 @@ export async function generateVerificationReportPdf(
   drawSafeText("Authorized Sign-off:", margin, y - 10, 8, fontBold, rgb(0.2, 0.25, 0.3));
   drawSafeText("Legal Metrology Officer (E-Signed)", margin, y - 22, 7.5, fontRegular, rgb(0.3, 0.35, 0.4));
 
-  drawSafeText("Official Seal:", margin + 350, y - 10, 8, fontBold, rgb(0.2, 0.25, 0.3));
+  drawSafeText("Inspection Office:", margin + 350, y - 10, 8, fontBold, rgb(0.2, 0.25, 0.3));
   drawSafeText("Enforcement Division, DCA, Govt. of India", margin + 350, y - 22, 7.5, fontRegular, rgb(0.3, 0.35, 0.4));
 
   // Footer notice
   drawSafeText(
-    "PackCheck AI - Automated Legal Metrology Inspection Platform | Confidential Government Record",
+    "PackCheck AI - Automated Legal Metrology Inspection Platform | Official Inspection Record",
     margin,
     18,
     6.5,

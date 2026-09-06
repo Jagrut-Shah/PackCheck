@@ -26,7 +26,7 @@ export const MOCK_COMPLIANCE_AMUL_GHEE: ComplianceEvaluation = {
   score: 100,
   scoreMethodVersion: "LM-COMPLIANCE-INDEX-V1",
   summaryNotes:
-    "All mandatory declarations under Legal Metrology (Packaged Commodities) Rules, 2011 comply with statutory standards. Net quantity, MRP with tax inclusion, USP, and Consumer Care details are fully verified.",
+    "All mandatory declarations under Legal Metrology (Packaged Commodities) Rules, 2011 comply with metrology standards. Net quantity, MRP with tax inclusion, USP, and Consumer Care details are fully verified.",
   results: [
     {
       ruleId: "rule_6_1_a",
@@ -99,13 +99,13 @@ export const MOCK_COMPLIANCE_AMUL_GHEE: ComplianceEvaluation = {
       observedValue: "₹650.00 (INCL. OF ALL TAXES)",
       expectedRequirement: "MRP declared with 'inclusive of all taxes'",
       result: "PASS",
-      explanation: "MRP is clearly declared in Indian Rupees with statutory wording 'INCL. OF ALL TAXES'.",
+      explanation: "MRP is clearly declared in Indian Rupees with mandatory wording 'INCL. OF ALL TAXES'.",
       ruleNumber: "Rule 6(1)(e)",
       ruleTitle: "Maximum Retail Price (Inclusive of all taxes)",
       category: "MRP_STANDARDS",
       status: "PASS",
       statutoryReference: "Rule 6(1)(e)",
-      rationale: "MRP is clearly declared in Indian Rupees with statutory wording 'INCL. OF ALL TAXES'.",
+      rationale: "MRP is clearly declared in Indian Rupees with mandatory wording 'INCL. OF ALL TAXES'.",
       detectedValue: "₹650.00 (INCL. OF ALL TAXES)",
     },
     {
@@ -156,7 +156,7 @@ export const MOCK_FINDINGS_NUTRIBITE: ComplianceFinding[] = [
     status: "OPEN",
     title: "MRP missing mandatory 'Inclusive of all taxes' declaration",
     description:
-      "The Maximum Retail Price declaration 'MRP Rs 180/-' fails to specify the statutory clause 'inclusive of all taxes' or 'incl. of all taxes' as mandated under Rule 6(1)(e).",
+      "The Maximum Retail Price declaration 'MRP Rs 180/-' fails to specify the mandatory clause 'inclusive of all taxes' or 'incl. of all taxes' as mandated under Rule 6(1)(e).",
     observedValue: "MRP Rs 180/-",
     expectedValue: "MRP ₹ ... (Inclusive of all taxes) / (incl. of all taxes)",
     expectedRequirement: "MRP ₹ ... (Inclusive of all taxes) / (incl. of all taxes)",
@@ -275,7 +275,7 @@ export const MOCK_COMPLIANCE_NUTRIBITE: ComplianceEvaluation = {
   score: 50,
   scoreMethodVersion: "LM-COMPLIANCE-INDEX-V1",
   summaryNotes:
-    "Potential non-compliance detected. 3 statutory infractions identified under Rule 6(1)(e), Rule 6(1)(f), and Unit Sale Price requirements.",
+    "Potential non-compliance detected. 3 compliance issues identified under Rule 6(1)(e), Rule 6(1)(f), and Unit Sale Price requirements.",
   results: [
     {
       ruleId: "rule_6_1_a",
@@ -332,7 +332,7 @@ export const MOCK_COMPLIANCE_NUTRIBITE: ComplianceEvaluation = {
       observedValue: "MRP Rs 180/-",
       expectedRequirement: "MRP with 'inclusive of all taxes'",
       result: "FAIL",
-      explanation: "Missing mandatory 'inclusive of all taxes' statutory declaration.",
+      explanation: "Missing mandatory 'inclusive of all taxes' declaration.",
       ruleNumber: "Rule 6(1)(e)",
       ruleTitle: "Maximum Retail Price (Inclusive of all taxes)",
       category: "MRP_STANDARDS",

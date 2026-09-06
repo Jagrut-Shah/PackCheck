@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { ApiResponse, toBackendComplianceStatus } from '@/lib/types/common'
 import { recordActivityEvent } from '@/lib/events/activity-event'
+import { requireAuth, verifyInspectionOwnership } from '@/lib/auth/server'
 
 interface FindingInput {
   rule_id: string
@@ -37,6 +38,9 @@ export async function POST(
 ): Promise<NextResponse> {
   const db = supabaseAdmin || supabase;
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { id: inspectionId } = await context.params
 
     if (!inspectionId) {
@@ -67,25 +71,22 @@ export async function POST(
       )
     }
 
-    // Verify inspection exists
-    const { data: inspection, error: inspectionError } = await db
-      .from('inspections')
-      .select('id, product_type, inspector_id')
-      .eq('id', inspectionId)
-      .single()
-
-    if (inspectionError || !inspection) {
+    // Verify inspection exists and belongs to this user
+    const ownership = await verifyInspectionOwnership(inspectionId, user.id);
+    if (!ownership.authorized) {
       return NextResponse.json(
         {
           success: false,
           error: {
             code: 'INSPECTION_NOT_FOUND',
-            message: `Inspection ${inspectionId} not found`
+            message: ownership.errorMessage || `Inspection ${inspectionId} not found`
           }
         } as ApiResponse<null>,
-        { status: 404 }
+        { status: ownership.errorStatus || 404 }
       )
     }
+
+    const inspection = ownership.inspection;
 
     // Clean up any prior findings for this inspection to prevent stale/duplicate accumulation
     await db.from('compliance_findings').delete().eq('inspection_id', inspectionId)
@@ -177,6 +178,7 @@ export async function POST(
       .from('inspections')
       .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
       .eq('id', inspectionId)
+      .eq('inspector_id', user.id)
 
     if (updateError) {
       console.error('Update error:', updateError)
@@ -186,18 +188,18 @@ export async function POST(
     try {
       const violationCount = (body.findings || []).length;
       const commodityName = inspection.product_type || "Packaged Commodity";
-      const inspectorId = inspection.inspector_id || "officer_enforcement";
+      const inspectorId = user.id;
 
       // 1. Record COMPLIANCE_RUN
       await recordActivityEvent({
         action: "COMPLIANCE_RUN",
-        actionLabel: body.status === "PASS" ? "Compliance Evaluation Passed" : "Infractions Determined",
+        actionLabel: body.status === "PASS" ? "Compliance Evaluation Passed" : "Issues Identified",
         inspectionId,
         commodityName,
         actorId: inspectorId,
         actorName: "Deterministic Rules Engine",
         category: "COMPLIANCE",
-        details: `Statutory verification evaluated against Legal Metrology Rules, 2011. Verdict: ${body.status}. Violations: ${violationCount}.`,
+        details: `Compliance verification evaluated against Legal Metrology Rules, 2011. Verdict: ${body.status}. Issues: ${violationCount}.`,
         metadata: {
           verdict: body.status,
           violationsCount: violationCount,
@@ -208,13 +210,13 @@ export async function POST(
       for (const f of body.findings || []) {
         await recordActivityEvent({
           action: "FINDING_CREATED",
-          actionLabel: "Statutory Infraction Flagged",
+          actionLabel: "Compliance Issue Flagged",
           inspectionId,
           commodityName,
           actorId: inspectorId,
           actorName: "Rules Verification System",
           category: "COMPLIANCE",
-          details: `Infraction flagged under ${f.rule_id} (${f.rule_name}): ${f.message}. Severity: ${f.severity}.`,
+          details: `Issue flagged under ${f.rule_id} (${f.rule_name}): ${f.message}. Severity: ${f.severity}.`,
           metadata: f,
         });
       }

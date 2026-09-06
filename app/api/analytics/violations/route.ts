@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { ApiResponse } from '@/lib/types/common'
+import { requireAuth } from '@/lib/auth/server'
 
 interface Inspection {
   id: string
@@ -22,6 +23,12 @@ interface AnalyticsResponse {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const { user, errorResponse } = await requireAuth(request)
+  if (errorResponse) {
+    return errorResponse
+  }
+  const db = supabaseAdmin || supabase
+
   try {
     const searchParams = request.nextUrl.searchParams
     const requestedGroupBy = searchParams.get('group_by')
@@ -30,10 +37,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         ? requestedGroupBy
         : 'product_type'
 
-    // Get all inspections
-    const { data: inspections, error: inspectionsError } = await supabase
+    // Get inspections belonging strictly to this user
+    const { data: inspections, error: inspectionsError } = await db
       .from('inspections')
       .select('id, status, product_type')
+      .eq('inspector_id', user.id)
 
     if (inspectionsError) {
       return NextResponse.json(
@@ -49,10 +57,26 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       )
     }
 
-    // Get all findings
-    const { data: findings, error: findingsError } = await supabase
+    if (!inspections || inspections.length === 0) {
+      return NextResponse.json(
+        {
+          success: true,
+          data: {
+            data: [],
+            group_by: groupBy
+          } as AnalyticsResponse
+        } as ApiResponse<AnalyticsResponse>,
+        { status: 200 }
+      )
+    }
+
+    const userInspectionIds = inspections.map((i: any) => i.id)
+
+    // Get findings only for this user's inspections
+    const { data: findings, error: findingsError } = await db
       .from('compliance_findings')
       .select('inspection_id')
+      .in('inspection_id', userInspectionIds)
 
     if (findingsError) {
       return NextResponse.json(
@@ -68,10 +92,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       )
     }
 
-    // Get final results for accurate pass/fail outcome
-    const { data: finalResults } = await supabase
+    // Get final results only for this user's inspections
+    const { data: finalResults } = await db
       .from('final_results')
       .select('inspection_id, status')
+      .in('inspection_id', userInspectionIds)
 
     // Aggregate by groupBy field
     const aggregated: { [key: string]: { pass: number; fail: number; violations: number } } = {}

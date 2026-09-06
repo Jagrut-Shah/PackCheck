@@ -42,14 +42,14 @@ export const FieldEditModal: React.FC<FieldEditModalProps> = ({
     <Dialog
       isOpen={isOpen}
       onClose={onClose}
-      title={`Edit Statutory Declaration: ${fieldLabel}`}
-      description="Legal Metrology verification override. Corrected values are logged with inspector credentials."
+      title={`Edit Required Declaration: ${fieldLabel}`}
+      description="Officer correction. Corrected values are recorded in the official audit trail."
       size="md"
     >
       <div className="space-y-4 text-xs">
         {/* Old Value Display */}
         <div className="space-y-1">
-          <label className="font-semibold text-[#475569]">Previous / Machine-Extracted Value</label>
+          <label className="font-semibold text-[#475569]">Extracted Value from Label</label>
           <div className="p-2.5 rounded-md bg-[#F1F5F9] border border-[#E2E8F0] text-[#0F172A] font-mono text-[11px] select-all">
             {originalValue || currentValue || "(empty)"}
           </div>
@@ -57,7 +57,7 @@ export const FieldEditModal: React.FC<FieldEditModalProps> = ({
 
         {/* New Corrected Value Input */}
         <div className="space-y-1.5">
-          <label className="font-semibold text-[#0F172A]">Corrected Statutory Value *</label>
+          <label className="font-semibold text-[#0F172A]">Corrected Value *</label>
           <Textarea
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -70,18 +70,18 @@ export const FieldEditModal: React.FC<FieldEditModalProps> = ({
         {/* Optional Correction Reason */}
         <div className="space-y-1.5">
           <label className="font-semibold text-[#0F172A]">
-            Correction Reason / Inspector Notes (Optional)
+            Correction Reason / Officer Notes (Optional)
           </label>
           <Input
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. Corrected blurred numeral from packaging label inspection"
+            placeholder="e.g., Corrected blurred text from packaging label"
             className="text-xs"
           />
         </div>
 
         <div className="p-3 rounded-lg bg-[#FEF3C7] border border-[#FCD34D] text-[#92400E] text-[11px] leading-relaxed">
-          <strong>Statutory Notice:</strong> Overriding this field will re-evaluate corresponding Legal Metrology Rule 6 deterministic compliance checks and record an official verification audit stamp.
+          <strong>Notice:</strong> Updating this value will re-check compliance against Legal Metrology Rule 6 and record an officer correction in the audit trail.
         </div>
 
         <div className="flex justify-end gap-2 pt-3 border-t border-[#F1F5F9]">

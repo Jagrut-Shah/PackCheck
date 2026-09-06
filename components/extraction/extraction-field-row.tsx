@@ -52,7 +52,7 @@ export const ExtractionFieldRow: React.FC<ExtractionFieldRowProps> = ({
           {isOverridden && (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#166534] bg-[#DCFCE7] px-1.5 py-0.5 rounded border border-[#86EFAC]">
               <CheckCheck className="size-3" />
-              Inspector Corrected
+              Officer Corrected
             </span>
           )}
         </div>
@@ -63,7 +63,7 @@ export const ExtractionFieldRow: React.FC<ExtractionFieldRowProps> = ({
 
         {rawValue && rawValue !== value && (
           <p className="text-[11px] text-[#94A3B8] font-mono truncate">
-            Raw OCR: {rawValue}
+            Scanned text: {rawValue}
           </p>
         )}
       </div>

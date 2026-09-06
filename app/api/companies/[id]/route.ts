@@ -4,11 +4,17 @@ import { getPackerById, getAllInspectionCompanyLinks } from "@/lib/companies/sto
 import { isCompanyMatch } from "@/lib/companies/normalization";
 import { getAuthoritativeAuditLogs } from "@/lib/events/activity-event";
 import { ApiResponse } from "@/lib/types/common";
+import { requireAuth } from "@/lib/auth/server";
 
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
+  const { user, errorResponse } = await requireAuth(request);
+  if (errorResponse) {
+    return errorResponse;
+  }
+
   try {
     const { id: companyId } = await context.params;
 
@@ -27,7 +33,7 @@ export async function GET(
 
     // 1. Fetch packer entity
     const packer = await getPackerById(companyId);
-    if (!packer) {
+    if (!packer || (packer.user_id && packer.user_id !== user.id)) {
       return NextResponse.json(
         {
           success: false,
@@ -42,17 +48,19 @@ export async function GET(
 
     const db = supabaseAdmin || supabase;
 
-    // 2. Fetch all inspections from Supabase (with resilient schema fallback)
+    // 2. Fetch all inspections from Supabase strictly for this user
     let allInspections: any[] = [];
     const { data: primaryInspections, error: primaryErr } = await db
       .from("inspections")
       .select("id, product_type, company_id, company_name, status, created_at, updated_at")
+      .eq("inspector_id", user.id)
       .order("created_at", { ascending: false });
 
     if (primaryErr || !primaryInspections) {
       const { data: fallbackInspections } = await db
         .from("inspections")
         .select("id, product_type, status, created_at, updated_at")
+        .eq("inspector_id", user.id)
         .order("created_at", { ascending: false });
       allInspections = fallbackInspections || [];
     } else {
@@ -143,7 +151,7 @@ export async function GET(
     }> = [];
 
     try {
-      const allLogs = await getAuthoritativeAuditLogs();
+      const allLogs = await getAuthoritativeAuditLogs({ userId: user.id });
       companyAuditLogs = allLogs
         .filter((log) => {
           if (log.inspectionId && inspectionIds.includes(log.inspectionId)) return true;

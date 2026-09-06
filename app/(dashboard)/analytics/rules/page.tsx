@@ -109,7 +109,7 @@ const FRIENDLY_RULE_GUIDE: Record<
     simpleDescription: "Text and numbers meet minimum readable letter height.",
     simpleCategory: "Display & Font",
     whatIsRequired:
-      "All required information must be printed in a readable font size that meets the minimum statutory height based on the package size.",
+      "All required information must be printed in a readable font size that meets the minimum legal height based on the package size.",
   },
   rule_27: {
     shortTitle: "Packer Registration Certificate",
@@ -287,12 +287,12 @@ export default function RuleAnalyticsPage() {
       {/* Main Content */}
       {data && overview && (
         <>
-          {/* Statutory Scope Banner */}
+          {/* Inspection Scope Banner */}
           <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] text-xs">
             <div className="flex items-center gap-2.5">
               <div className="size-2 rounded-full bg-[#2563EB]" />
               <span className="text-[#1E3A8A]">
-                <strong>Legal Metrology Statutory Checklist:</strong> Covers <strong>{data.rules.length} active statutory package declarations</strong> evaluated under the Legal Metrology (Packaged Commodities) Rules, 2011.
+                <strong>Legal Metrology Inspection Scope:</strong> Covers <strong>{data.rules.length} active package declarations</strong> evaluated under the Legal Metrology (Packaged Commodities) Rules, 2011.
               </span>
             </div>
             <span className="text-[11px] text-[#1D4ED8] font-semibold hidden sm:inline">
@@ -816,7 +816,7 @@ export default function RuleAnalyticsPage() {
                     {getFriendlyRule(selectedRule).whatIsRequired}
                   </p>
                   <p className="text-[11px] text-[#64748B] pt-1">
-                    Statutory basis: {selectedRule.statutoryReference}
+                    Rule reference: {selectedRule.statutoryReference}
                   </p>
                 </div>
 

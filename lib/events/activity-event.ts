@@ -307,6 +307,7 @@ export async function getAuthoritativeAuditLogs(params?: {
   inspectionId?: string;
   action?: string;
   search?: string;
+  userId?: string;
 }): Promise<StoredAuditLog[]> {
   const db = supabaseAdmin || supabase;
   const results: StoredAuditLog[] = [];
@@ -320,6 +321,9 @@ export async function getAuthoritativeAuditLogs(params?: {
       .order("created_at", { ascending: false })
       .limit(100);
 
+    if (params?.userId) {
+      query = query.eq("actor_id", params.userId);
+    }
     if (params?.inspectionId) {
       query = query.eq("inspection_id", params.inspectionId);
     }
@@ -358,6 +362,7 @@ export async function getAuthoritativeAuditLogs(params?: {
   // 2. Merge in-memory buffer events
   for (const log of inMemoryAuditLogs) {
     if (seenIds.has(log.id)) continue;
+    if (params?.userId && log.officerId !== params.userId) continue;
     if (params?.inspectionId && log.inspectionId !== params.inspectionId) continue;
     if (params?.action && log.action !== params.action) continue;
     seenIds.add(log.id);
@@ -373,6 +378,9 @@ export async function getAuthoritativeAuditLogs(params?: {
         .order("created_at", { ascending: false })
         .limit(20);
 
+      if (params?.userId) {
+        query = query.eq("inspector_id", params.userId);
+      }
       if (params?.inspectionId) {
         query = query.eq("id", params.inspectionId);
       }
@@ -502,7 +510,7 @@ export async function getAuthoritativeNotifications(params?: {
       .limit(limit);
 
     if (params?.userId && params.userId !== "all") {
-      query = query.or(`user_id.eq.${params.userId},user_id.eq.all`);
+      query = query.eq("user_id", params.userId);
     }
 
     const { data, error } = await query;
@@ -536,7 +544,7 @@ export async function getAuthoritativeNotifications(params?: {
   // 2. Merge in-memory buffer notifications
   for (const n of inMemoryNotifications) {
     if (seenIds.has(n.id)) continue;
-    if (params?.userId && n.user_id !== "all" && n.user_id !== params.userId) continue;
+    if (params?.userId && params.userId !== "all" && n.user_id !== params.userId) continue;
     const cleanInspId = (n.inspection_id || "").replace(/^notif_/, "");
     if (persistentReadIds.has(n.id) || (cleanInspId && persistentReadIds.has(cleanInspId))) {
       n.read = true;
@@ -549,11 +557,17 @@ export async function getAuthoritativeNotifications(params?: {
   // 3. Fallback synthesis from completed/reviewing inspections if no notifications exist yet
   if (results.length === 0) {
     try {
-      const { data: inspections } = await db
+      let query = db
         .from("inspections")
         .select("*, final_results(*), compliance_findings(*)")
         .order("created_at", { ascending: false })
         .limit(10);
+
+      if (params?.userId && params.userId !== "all") {
+        query = query.eq("inspector_id", params.userId);
+      }
+
+      const { data: inspections } = await query;
 
       for (const insp of inspections || []) {
         const violations = insp.compliance_findings?.length || 0;
@@ -624,7 +638,11 @@ export async function markAuthoritativeNotificationRead(notificationIdOrAll: str
       .concat(inMemoryNotifications.map((n) => n.inspection_id));
     
     try {
-      const { data: inspections } = await db.from("inspections").select("id");
+      let query = db.from("inspections").select("id");
+      if (userId) {
+        query = query.eq("inspector_id", userId);
+      }
+      const { data: inspections } = await query;
       if (inspections) {
         inspections.forEach((insp) => {
           allIdsToMark.push(insp.id);
@@ -639,11 +657,11 @@ export async function markAuthoritativeNotificationRead(notificationIdOrAll: str
     try {
       if (userId) {
         await db.from("notifications").update({ read: true, read_at: now }).eq("user_id", userId);
+        await db.from("inspections").update({ viewed_at: now }).eq("inspector_id", userId).is("viewed_at", null);
       } else {
         await db.from("notifications").update({ read: true, read_at: now });
+        await db.from("inspections").update({ viewed_at: now }).is("viewed_at", null);
       }
-      // Crucial: mark ALL unviewed inspections in database so they never revert to unread
-      await db.from("inspections").update({ viewed_at: now }).is("viewed_at", null);
     } catch (e) {
       // Ignored
     }
@@ -665,11 +683,20 @@ export async function markAuthoritativeNotificationRead(notificationIdOrAll: str
     }
 
     try {
-      await db
+      let notifQuery = db
         .from("notifications")
         .update({ read: true, read_at: now })
         .or(`id.eq.${notificationIdOrAll},id.eq.${cleanId},inspection_id.eq.${cleanId}`);
-      await db.from("inspections").update({ viewed_at: now }).eq("id", cleanId);
+      if (userId) {
+        notifQuery = notifQuery.eq("user_id", userId);
+      }
+      await notifQuery;
+
+      let inspQuery = db.from("inspections").update({ viewed_at: now }).eq("id", cleanId);
+      if (userId) {
+        inspQuery = inspQuery.eq("inspector_id", userId);
+      }
+      await inspQuery;
     } catch (e) {
       // Ignored
     }

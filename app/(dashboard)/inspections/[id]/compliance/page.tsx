@@ -45,7 +45,7 @@ export default function CompliancePage({ params }: CompliancePageProps) {
               );
             } else if (evalResult.overallResult === "POTENTIAL_NON_COMPLIANCE") {
               toast.warning(
-                "Statutory Infractions Flagged",
+                "Compliance Issues Flagged",
                 "Potential non-compliance detected. Review flagged declarations."
               );
             }
@@ -62,7 +62,7 @@ export default function CompliancePage({ params }: CompliancePageProps) {
   if (!inspection) {
     return (
       <div className="p-8 text-center text-xs text-[#475569]">
-        Loading statutory compliance evaluation...
+        Loading compliance evaluation...
       </div>
     );
   }
@@ -88,7 +88,7 @@ export default function CompliancePage({ params }: CompliancePageProps) {
           <div className="space-y-1">
             <h3 className="text-base font-bold text-[#0F172A]">No Compliance Evaluation Yet</h3>
             <p className="text-xs text-[#475569] max-w-md mx-auto">
-              Please review the extracted declarations or run the verification pipeline before viewing the statutory compliance evaluation.
+              Please review the extracted declarations or run the verification pipeline before viewing the compliance evaluation.
             </p>
           </div>
           <div>
@@ -112,7 +112,7 @@ export default function CompliancePage({ params }: CompliancePageProps) {
 
       <InspectionStepper inspectionId={inspection.id} />
 
-      {/* Statutory Determination Verdict Banner */}
+      {/* Compliance Determination Verdict Banner */}
       <ComplianceVerdictBanner
         verdict={compliance.overallResult}
         passedCount={compliance.passedCount ?? compliance.rulesPassed}
@@ -156,12 +156,12 @@ export default function CompliancePage({ params }: CompliancePageProps) {
         </div>
       </div>
 
-      {/* Section: Non-Compliance Findings & Infractions */}
+      {/* Section: Non-Compliance Findings & Issues */}
       {inspection.findings.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-bold uppercase tracking-wider text-[#991B1B]">
-              Statutory Infractions & Observations ({inspection.findings.length})
+              Compliance Issues & Observations ({inspection.findings.length})
             </h2>
             <span className="text-[11px] text-[#475569]">
               Direct Legal Metrology Act, 2009 citations
@@ -185,10 +185,10 @@ export default function CompliancePage({ params }: CompliancePageProps) {
         <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-[#E2E8F0]">
           <div>
             <CardTitle className="text-sm font-bold text-[#0F172A]">
-              Statutory Rules Evaluation Checklist
+              Rule Evaluation Checklist
             </CardTitle>
             <p className="text-xs text-[#475569]">
-              Deterministic rule execution under PCR-2011 Rule 6, 7 & Schedule II
+              Automated rule evaluation under Legal Metrology Rules (PCR-2011)
             </p>
           </div>
           <span className="text-xs font-semibold text-[#1D4ED8] bg-[#EFF6FF] px-2.5 py-1 rounded-md border border-[#BFDBFE]">
@@ -222,7 +222,7 @@ export default function CompliancePage({ params }: CompliancePageProps) {
 
             <Link href={`/inspections/${inspection.id}/report`}>
               <Button variant="primary" size="sm" rightIcon={<ArrowRight className="size-3.5" />}>
-                Proceed to Verification Report
+                Proceed to Inspection Report
               </Button>
             </Link>
           </div>

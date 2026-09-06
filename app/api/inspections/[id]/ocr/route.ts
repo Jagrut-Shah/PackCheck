@@ -4,6 +4,7 @@ import { processImageOCR } from "@/lib/ocr";
 import { OCRResult } from "@/lib/types/ocr";
 import { ApiResponse } from "@/lib/types/common";
 import { recordActivityEvent } from "@/lib/events/activity-event";
+import { requireAuth, verifyInspectionOwnership } from "@/lib/auth/server";
 
 export const maxDuration = 60;
 
@@ -17,7 +18,12 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const db = supabaseAdmin || supabase;
+  let userId: string | undefined;
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+    userId = user.id;
+
     const { id: inspectionId } = await context.params;
 
     if (!inspectionId) {
@@ -33,11 +39,27 @@ export async function POST(
       );
     }
 
+    // Verify ownership
+    const ownership = await verifyInspectionOwnership(inspectionId, user.id);
+    if (!ownership.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "INSPECTION_NOT_FOUND",
+            message: ownership.errorMessage || `Inspection ${inspectionId} not found`,
+          },
+        } as ApiResponse<null>,
+        { status: ownership.errorStatus || 404 }
+      );
+    }
+
     // 1. Fetch inspection details
     const { data: inspection, error: inspectionError } = await db
       .from("inspections")
       .select("*")
       .eq("id", inspectionId)
+      .eq("inspector_id", user.id)
       .single();
 
     if (inspectionError || !inspection) {
@@ -295,7 +317,7 @@ export async function POST(
         category: "PIPELINE",
         details: `OCR processing failed: ${err instanceof Error ? err.message : "Unknown error"}.`,
         notification: {
-          targetUserId: "all",
+          targetUserId: userId || "officer",
           type: "CRITICAL",
           title: "OCR Processing Failed",
           message: `OCR processing failed for inspection ${inspectionId.slice(0, 8).toUpperCase()}.`,

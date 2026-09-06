@@ -45,7 +45,7 @@ export default function InspectionReportPage({ params }: ReportPageProps) {
   if (isLoading) {
     return (
       <div className="p-12 text-center text-xs text-[#475569]">
-        Loading statutory verification report...
+        Loading inspection report...
       </div>
     );
   }
@@ -74,7 +74,7 @@ export default function InspectionReportPage({ params }: ReportPageProps) {
         <div className="rounded-xl border border-[#E2E8F0] bg-white p-8 text-center space-y-4 shadow-2xs">
           <h3 className="text-base font-bold text-[#0F172A]">Verification Report Not Generated Yet</h3>
           <p className="text-xs text-[#475569] max-w-md mx-auto">
-            The statutory compliance verification report is generated after evaluating mandatory Rule 6 declarations.
+            The compliance report is generated after evaluating required Rule 6 declarations.
           </p>
           <Link href={`/inspections/${inspection.id}/compliance`}>
             <Button variant="primary" size="sm">

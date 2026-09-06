@@ -10,6 +10,7 @@ import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { generateVerificationReportPdf } from "@/lib/reports/pdf-generator";
 import { mapBackendReportDataToVerificationReport } from "@/lib/api/reports";
 import { recordActivityEvent } from "@/lib/events/activity-event";
+import { requireAuth, verifyInspectionOwnership } from "@/lib/auth/server";
 
 export const maxDuration = 30;
 
@@ -19,6 +20,9 @@ export async function GET(
 ): Promise<NextResponse> {
   const db = supabaseAdmin || supabase;
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { id: inspectionId } = await context.params;
 
     if (!inspectionId) {
@@ -34,11 +38,27 @@ export async function GET(
       );
     }
 
+    // Verify ownership
+    const ownership = await verifyInspectionOwnership(inspectionId, user.id);
+    if (!ownership.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "INSPECTION_NOT_FOUND",
+            message: ownership.errorMessage || `Inspection ${inspectionId} not found`,
+          },
+        },
+        { status: ownership.errorStatus || 404 }
+      );
+    }
+
     // 1. Fetch inspection record
     const { data: inspection, error: inspectionError } = await db
       .from("inspections")
       .select("*")
       .eq("id", inspectionId)
+      .eq("inspector_id", user.id)
       .single();
 
     if (inspectionError || !inspection) {
@@ -83,18 +103,18 @@ export async function GET(
     try {
       await recordActivityEvent({
         action: "REPORT_SIGNED",
-        actionLabel: "Verification Certificate Generated",
+        actionLabel: "Inspection Report Generated",
         inspectionId,
         commodityName: inspection.product_type || "Packaged Commodity",
-        actorId: inspection.inspector_id || "officer_enforcement",
+        actorId: user.id,
         actorName: "Legal Metrology Inspector",
         category: "COMPLIANCE",
-        details: `Generated cryptographically signed certificate (${safeReportNum}) under Section 15 & 65B Indian Evidence Act.`,
+        details: `Generated cryptographically signed report (${safeReportNum}) under Section 15 & 65B Indian Evidence Act.`,
         notification: {
-          targetUserId: inspection.inspector_id || "all",
+          targetUserId: user.id,
           type: "COMPLIANT",
-          title: "Certificate Generated",
-          message: `Verification certificate generated for ${inspection.product_type || "commodity"} (${inspectionId.slice(0, 8).toUpperCase()}).`,
+          title: "Report Generated",
+          message: `Inspection report generated for ${inspection.product_type || "commodity"} (${inspectionId.slice(0, 8).toUpperCase()}).`,
           actionUrl: `/inspections/${inspectionId}/report`,
         },
         metadata: {

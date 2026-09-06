@@ -164,7 +164,7 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
             label: "MRP 'Inclusive of all taxes' Statement",
             fieldKey: "mrpIncludesTaxes",
             ruleReference: STATUTORY_REFERENCES.RULE_6_1_E.rule,
-            value: decl.mrp?.value?.isInclusiveOfAllTaxes ? "Present ('INCL. OF ALL TAXES')" : "MISSING (Statutory Infraction)",
+            value: decl.mrp?.value?.isInclusiveOfAllTaxes ? "Present ('INCL. OF ALL TAXES')" : "MISSING (Required Statement Missing)",
             confidenceScore: decl.mrp?.confidence ?? 0.96,
             confidenceLevel: decl.mrp?.confidenceLevel || "HIGH",
             sourceImageAngle: "MRP_PANEL",
@@ -294,7 +294,7 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
       setEditModal((prev) => ({ ...prev, isOpen: false }));
       toast.success(
         "Field Correction Saved",
-        `Statutory declaration '${item.label}' updated and persisted to database.`
+        `Declaration '${item.label}' updated and saved.`
       );
     } catch (err) {
       console.error("Failed to save field correction to backend:", err);
@@ -337,7 +337,7 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
           <div className="space-y-1">
             <h3 className="text-base font-bold text-[#0F172A]">No Extracted Declarations Yet</h3>
             <p className="text-xs text-[#475569] max-w-md mx-auto">
-              This inspection has not yet been processed through the optical character recognition and declaration extraction pipeline.
+              This inspection has not yet been processed through image reading and declaration extraction.
             </p>
           </div>
           <div>
@@ -362,7 +362,7 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
       <div className="flex items-center gap-3 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] p-3.5 px-4 text-xs text-[#0F172A]">
         <Info className="size-4 text-[#1D4ED8] shrink-0" />
         <p className="flex-1 leading-relaxed">
-          <span className="font-semibold text-[#0F172A]">Inspector Review Gate:</span> Verify each statutory declaration extracted from package label imaging under Legal Metrology Rule 6. Click the edit icon to correct any numerals or addresses before triggering deterministic compliance evaluation.
+          <span className="font-semibold text-[#0F172A]">Officer Review:</span> Verify each required declaration extracted from the package label under Legal Metrology Rule 6. Click the edit icon to correct any numbers, text, or addresses before running the compliance check.
         </p>
       </div>
 
@@ -371,14 +371,14 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
         <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-[#E2E8F0]">
           <div>
             <CardTitle className="text-sm font-bold text-[#0F172A]">
-              Mandatory Rule 6 Declarations Checklist
+              Required Rule 6 Declarations Checklist
             </CardTitle>
             <p className="text-xs text-[#475569]">
-              All 17 statutory package particulars evaluated under Legal Metrology Rules, 2011
+              Package label details evaluated under Legal Metrology Rules, 2011
             </p>
           </div>
-          <span className="text-xs text-[#475569] font-mono">
-            PaddleOCR + Structured Extraction
+          <span className="text-xs text-[#475569] font-medium">
+            Label Reading & Extraction
           </span>
         </CardHeader>
 

@@ -5,15 +5,20 @@ import {
   markAuthoritativeNotificationRead,
   recordActivityEvent,
 } from "@/lib/events/activity-event";
+import { requireAuth } from "@/lib/auth/server";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const { user, errorResponse } = await requireAuth(request);
+  if (errorResponse) {
+    return errorResponse;
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams;
-    const userId = searchParams.get("user_id") || undefined;
     const limit = parseInt(searchParams.get("limit") || "20", 10);
 
     const { notifications, unreadCount } = await getAuthoritativeNotifications({
-      userId,
+      userId: user.id,
       limit,
     });
 
@@ -41,17 +46,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
-  try {
-    const searchParams = request.nextUrl.searchParams;
-    const userId = searchParams.get("user_id") || undefined;
+  const { user, errorResponse } = await requireAuth(request);
+  if (errorResponse) {
+    return errorResponse;
+  }
 
-    await markAuthoritativeNotificationRead("all", userId);
+  try {
+    await markAuthoritativeNotificationRead("all", user.id);
 
     // Record audit event for notification acknowledgement
     await recordActivityEvent({
       action: "NOTIFICATION_READ",
       actionLabel: "Notifications Cleared",
-      actorId: userId || "officer_enforcement",
+      actorId: user.id,
       actorName: "Legal Metrology Inspector",
       details: "Inspector acknowledged and marked all notifications as read.",
       category: "USER_ACTION",

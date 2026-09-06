@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   CheckSquare,
   Image as ImageIcon,
-  Award,
+  FileText,
   ArrowRight,
   ExternalLink,
 } from "lucide-react";
@@ -95,7 +95,7 @@ export default function InspectionDetailPage({ params }: InspectionDetailPagePro
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Declarations, Compliance, Findings */}
         <div className="lg:col-span-2 flex flex-col gap-6">
-          {/* Statutory Declarations Overview Card */}
+          {/* Required Declarations Overview Card */}
           <Card className="border-[#E2E8F0] bg-white shadow-2xs">
             <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-[#F1F5F9]">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
@@ -145,7 +145,7 @@ export default function InspectionDetailPage({ params }: InspectionDetailPagePro
           <Card className="border-[#E2E8F0] bg-white shadow-2xs">
             <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-[#F1F5F9]">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-                Compliance Determination & Findings
+                Compliance Result & Findings
               </CardTitle>
               <Link
                 href={`/inspections/${inspection.id}/compliance`}
@@ -158,7 +158,7 @@ export default function InspectionDetailPage({ params }: InspectionDetailPagePro
             <CardContent className="p-4 space-y-3 text-xs">
               {inspection.findings.length === 0 ? (
                 <div className="p-4 rounded-lg bg-[#DCFCE7] border border-[#86EFAC] text-[#166534] font-medium flex items-center justify-between">
-                  <span>Zero statutory infractions detected. Commodity is fully compliant.</span>
+                  <span>No compliance issues detected. Commodity is fully compliant.</span>
                   <StatusBadge result="PASS" />
                 </div>
               ) : (
@@ -230,11 +230,11 @@ export default function InspectionDetailPage({ params }: InspectionDetailPagePro
           <Card className="border-[#E2E8F0] bg-[#F8FAFC] shadow-2xs">
             <CardContent className="p-5 space-y-3 text-xs">
               <div className="flex items-center gap-2">
-                <Award className="size-4 text-[#1D4ED8]" />
-                <h3 className="font-bold text-[#0F172A]">Verification Report</h3>
+                <FileText className="size-4 text-[#1D4ED8]" />
+                <h3 className="font-bold text-[#0F172A]">Inspection Report</h3>
               </div>
               <p className="text-[#475569] text-[11px] leading-relaxed">
-                Statutory certificate under Legal Metrology Act, 2009 & Packaged Commodities Rules, 2011.
+                Inspection report and compliance findings under Legal Metrology Rules, 2011.
               </p>
               <Link href={`/inspections/${inspection.id}/report`} className="block w-full">
                 <Button variant="primary" size="sm" className="w-full">

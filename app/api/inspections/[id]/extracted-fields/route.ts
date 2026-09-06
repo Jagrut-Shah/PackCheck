@@ -3,6 +3,7 @@ import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { ApiResponse } from '@/lib/types/common'
 import { recordActivityEvent } from '@/lib/events/activity-event'
 import { ensurePackerForInspection } from '@/lib/companies/storage'
+import { requireAuth, verifyInspectionOwnership } from '@/lib/auth/server'
 
 interface ExtractedFieldInput {
   field_name: string
@@ -43,6 +44,9 @@ export async function GET(
 ): Promise<NextResponse> {
   const db = supabaseAdmin || supabase;
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { id: inspectionId } = await context.params
 
     if (!inspectionId) {
@@ -58,23 +62,18 @@ export async function GET(
       )
     }
 
-    // Verify inspection exists
-    const { data: inspection, error: inspectionError } = await db
-      .from('inspections')
-      .select('id')
-      .eq('id', inspectionId)
-      .single()
-
-    if (inspectionError || !inspection) {
+    // Verify ownership
+    const ownership = await verifyInspectionOwnership(inspectionId, user.id);
+    if (!ownership.authorized) {
       return NextResponse.json(
         {
           success: false,
           error: {
             code: 'INSPECTION_NOT_FOUND',
-            message: `Inspection ${inspectionId} not found`
+            message: ownership.errorMessage || `Inspection ${inspectionId} not found`
           }
         } as ApiResponse<null>,
-        { status: 404 }
+        { status: ownership.errorStatus || 404 }
       )
     }
 
@@ -136,6 +135,9 @@ export async function POST(
 ): Promise<NextResponse> {
   const db = supabaseAdmin || supabase;
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { id: inspectionId } = await context.params
 
     if (!inspectionId) {
@@ -166,23 +168,18 @@ export async function POST(
       )
     }
 
-    // Verify inspection exists
-    const { data: inspection, error: inspectionError } = await db
-      .from('inspections')
-      .select('id')
-      .eq('id', inspectionId)
-      .single()
-
-    if (inspectionError || !inspection) {
+    // Verify inspection exists and belongs to this user
+    const ownership = await verifyInspectionOwnership(inspectionId, user.id);
+    if (!ownership.authorized) {
       return NextResponse.json(
         {
           success: false,
           error: {
             code: 'INSPECTION_NOT_FOUND',
-            message: `Inspection ${inspectionId} not found`
+            message: ownership.errorMessage || `Inspection ${inspectionId} not found`
           }
         } as ApiResponse<null>,
-        { status: 404 }
+        { status: ownership.errorStatus || 404 }
       )
     }
 
@@ -239,7 +236,8 @@ export async function POST(
         const packer = await ensurePackerForInspection(
           mfrField.extracted_value.trim(),
           undefined,
-          addrField?.extracted_value
+          addrField?.extracted_value,
+          user.id
         )
         if (packer) {
           await supabase
@@ -250,6 +248,7 @@ export async function POST(
               updated_at: new Date().toISOString(),
             })
             .eq('id', inspectionId)
+            .eq('inspector_id', user.id)
         }
       } catch (linkErr) {
         console.warn('Could not auto-link extracted manufacturer to packer:', linkErr)
@@ -263,6 +262,7 @@ export async function POST(
         actionLabel: 'Statutory Declarations Stored',
         inspectionId,
         commodityName: 'Packaged Commodity',
+        actorId: user.id,
         actorName: 'Declarations Storage Engine',
         category: 'PIPELINE',
         details: `Stored ${body.fields.length} statutory declaration field(s) into verification record.`,
@@ -277,6 +277,7 @@ export async function POST(
         actionLabel: 'Declarations Ingested',
         inspectionId,
         commodityName: 'Packaged Commodity',
+        actorId: user.id,
         actorName: 'Automated Pipeline Engine',
         category: 'PIPELINE',
         details: `Processed package typography. Successfully extracted and structured ${body.fields.length} statutory declarations under Legal Metrology Rule 6.`,

@@ -277,7 +277,7 @@ export function mapBackendDetailToComplianceEvaluation(
 
   const failedFindings = detail.findings || [];
   const rulesFailed = failedFindings.length;
-  const rulesEvaluated = 17; // Legal Metrology Rule 6 statutory checks
+  const rulesEvaluated = 17; // Legal Metrology Rule 6 checks
   const rulesPassed = Math.max(0, rulesEvaluated - rulesFailed);
   const rulesManualReview = detail.status === "MANUAL_REVIEW" ? 1 : 0;
 
@@ -285,7 +285,7 @@ export function mapBackendDetailToComplianceEvaluation(
     ruleId: f.rule_id,
     ruleVersion: "PCR-2011-AMENDED-2024.1",
     fieldEvaluated: f.rule_id,
-    observedValue: f.evidence || "Infraction observed",
+    observedValue: f.evidence || "Non-compliance observed",
     expectedRequirement: f.rule_name || f.rule_id,
     result: "FAIL",
     explanation: f.message,
@@ -317,8 +317,8 @@ export function mapBackendDetailToComplianceEvaluation(
     results,
     summaryNotes:
       rulesFailed === 0
-        ? "All evaluated statutory declarations comply with Legal Metrology (Packaged Commodities) Rules, 2011."
-        : `${rulesFailed} statutory infraction(s) detected under Legal Metrology Rules, 2011. Enforcement action required.`,
+        ? "All evaluated declarations comply with Legal Metrology (Packaged Commodities) Rules, 2011."
+        : `${rulesFailed} non-compliance issue(s) detected under Legal Metrology Rules, 2011. Enforcement action recommended.`,
   };
 }
 
@@ -388,7 +388,7 @@ export function serializeDeclarationsToBackendFields(
       field_name: "mrpIncludesTaxes",
       extracted_value: declarations.mrp?.value?.isInclusiveOfAllTaxes
         ? "Present ('INCL. OF ALL TAXES')"
-        : "MISSING (Statutory Infraction)",
+        : "MISSING (Missing Declaration)",
       confidence_score: declarations.mrp?.confidence ?? 0.96,
       source: "LLM",
     },

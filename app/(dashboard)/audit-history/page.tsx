@@ -24,6 +24,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 
 import { useToast } from "@/components/common/toast";
 import { supabase } from "@/lib/supabase";
+import { apiRequest } from "@/lib/api/client";
 
 export interface AuditLogEntry {
   id: string;
@@ -79,10 +80,9 @@ export default function AuditHistoryPage() {
         setIsLoading(true);
       }
       try {
-        const res = await fetch("/api/audit-logs");
-        const json = await res.json();
-        if (json.success && json.data?.logs) {
-          setLogs(json.data.logs);
+        const response = await apiRequest<{ logs: AuditLogEntry[]; total: number }>("/api/audit-logs");
+        if (response && Array.isArray(response.logs)) {
+          setLogs(response.logs);
         }
       } catch (err) {
         console.error("Failed to load real audit trail:", err);
@@ -135,7 +135,7 @@ export default function AuditHistoryPage() {
       setIsExporting(false);
       toast.success(
         "Audit Log Exported",
-        "Statutory audit trail exported successfully as cryptographically signed CSV."
+        "Audit trail exported successfully as cryptographically signed CSV."
       );
     }, 600);
   };
@@ -167,7 +167,7 @@ export default function AuditHistoryPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Regulatory Audit History"
-        description="Immutable, tamper-evident audit trail of officer actions, OCR extractions, field overrides, and certified statutory verdicts."
+        description="Immutable, tamper-evident audit trail of officer actions, extractions, field corrections, and certified inspection verdicts."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -196,7 +196,7 @@ export default function AuditHistoryPage() {
         <div className="text-xs text-[#0F172A] leading-relaxed">
           <span className="font-semibold text-[#1D4ED8]">Cryptographic Chain of Custody: </span>
           Every regulatory action recorded in this portal is signed with a SHA-256 verification hash and 
-          timestamped in accordance with statutory compliance procedures for Legal Metrology judicial enforcement.
+          timestamped in accordance with official compliance procedures for Legal Metrology inspection enforcement.
         </div>
       </div>
 
@@ -220,10 +220,10 @@ export default function AuditHistoryPage() {
             className="text-xs rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 py-1.5 text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-colors"
           >
             <option value="ALL">All Audit Actions</option>
-            <option value="CERTIFICATE_GENERATED">Statutory Certificates</option>
-            <option value="FIELD_OVERRIDE">Manual Field Overrides</option>
+            <option value="CERTIFICATE_GENERATED">Inspection Reports</option>
+            <option value="FIELD_OVERRIDE">Officer Field Corrections</option>
             <option value="VERDICT_CONFIRMED">Verdict Approvals</option>
-            <option value="OCR_INGESTION">OCR Extractions</option>
+            <option value="OCR_INGESTION">Text Extractions</option>
             <option value="INSPECTION_CREATED">Inspection Creations</option>
           </select>
         </div>
@@ -246,13 +246,13 @@ export default function AuditHistoryPage() {
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-32 text-center text-xs text-[#475569]">
-                  Loading statutory audit records from database...
+                  Loading audit records from database...
                 </TableCell>
               </TableRow>
             ) : filteredLogs.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-32 text-center text-xs text-[#475569]">
-                  No statutory audit events found matching active filters.
+                  No audit events found matching active filters.
                 </TableCell>
               </TableRow>
             ) : (

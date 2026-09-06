@@ -1,26 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiResponse } from "@/lib/types/common";
 import { markAuthoritativeNotificationRead, recordActivityEvent } from "@/lib/events/activity-event";
-import { supabase } from "@/lib/supabase";
+import { requireAuth } from "@/lib/auth/server";
 
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
+  const { user, errorResponse } = await requireAuth(request);
+  if (errorResponse) {
+    return errorResponse;
+  }
+
   try {
-    const searchParams = request.nextUrl.searchParams;
-    let userId = searchParams.get("user_id");
-
-    if (!userId) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        userId = user.id;
-      }
-    }
-
-    await markAuthoritativeNotificationRead("all", userId || undefined);
+    await markAuthoritativeNotificationRead("all", user.id);
 
     await recordActivityEvent({
       action: "NOTIFICATION_READ",
       actionLabel: "Notifications Cleared",
-      actorId: userId || "officer_enforcement",
+      actorId: user.id,
       actorName: "Legal Metrology Inspector",
       details: "Inspector cleared and acknowledged all unread notifications.",
       category: "USER_ACTION",

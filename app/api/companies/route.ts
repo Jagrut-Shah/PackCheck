@@ -9,6 +9,7 @@ import {
 import { isCompanyMatch } from "@/lib/companies/normalization";
 import { recordActivityEvent } from "@/lib/events/activity-event";
 import { ApiResponse } from "@/lib/types/common";
+import { requireAuth } from "@/lib/auth/server";
 
 export interface CompanyListItem {
   id: string;
@@ -37,25 +38,37 @@ export interface CompanyListItem {
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { searchParams } = request.nextUrl;
     const searchQuery = searchParams.get("searchQuery") || searchParams.get("q") || undefined;
     const state = searchParams.get("state") || undefined;
 
-    // 1. Fetch all registered packers
-    const packers = await getAllPackers({ searchQuery, state });
+    // 1. Fetch all registered packers owned by this user
+    const packers = await getAllPackers({ searchQuery, state, userId: user.id });
 
-    // 2. Fetch all real inspections from Supabase to compute authentic operational metrics
+    if (packers.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+      });
+    }
+
+    // 2. Fetch only THIS USER's real inspections to compute authentic operational metrics
     const db = supabaseAdmin || supabase;
     let allInspections: any[] = [];
     const { data: primaryInspections, error: primaryErr } = await db
       .from("inspections")
       .select("id, product_type, company_id, company_name, status, created_at")
+      .eq("inspector_id", user.id)
       .order("created_at", { ascending: false });
 
     if (primaryErr || !primaryInspections) {
       const { data: fallbackInspections } = await db
         .from("inspections")
         .select("id, product_type, status, created_at")
+        .eq("inspector_id", user.id)
         .order("created_at", { ascending: false });
       allInspections = fallbackInspections || [];
     } else {
@@ -204,6 +217,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+
     const body = await request.json().catch(() => ({}));
 
     const {
@@ -271,6 +287,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Call storage creation & deduplication
     const { entity, isDuplicate } = await createPacker({
+      user_id: user.id,
       name: finalName,
       brand: (brand || "").trim(),
       registration_number: finalRegNo,
@@ -303,6 +320,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         action: "PACKER_REGISTERED",
         actionLabel: "Rule 27 Registration Issued",
         category: "USER_ACTION",
+        actorId: user.id,
         actorName: "Legal Metrology Inspector",
         details: `Granted statutory Rule 27 registration certificate ${entity.registration_number} to ${entity.name}.`,
         metadata: {

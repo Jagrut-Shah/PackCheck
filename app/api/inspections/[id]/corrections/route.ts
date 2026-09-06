@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { ApiResponse } from '@/lib/types/common'
 import { recordActivityEvent } from '@/lib/events/activity-event'
+import { requireAuth, verifyInspectionOwnership } from '@/lib/auth/server'
 
 interface CorrectionInput {
   field_name: string
@@ -24,6 +25,9 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { id: inspectionId } = await context.params
 
     if (!inspectionId) {
@@ -36,6 +40,21 @@ export async function POST(
           }
         } as ApiResponse<null>,
         { status: 400 }
+      )
+    }
+
+    // Verify inspection exists and belongs to this user
+    const ownership = await verifyInspectionOwnership(inspectionId, user.id);
+    if (!ownership.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INSPECTION_NOT_FOUND',
+            message: ownership.errorMessage || `Inspection ${inspectionId} not found`
+          }
+        } as ApiResponse<null>,
+        { status: ownership.errorStatus || 404 }
       )
     }
 
@@ -70,25 +89,7 @@ export async function POST(
       }
     }
 
-    // Verify inspection exists
-    const { data: inspection, error: inspectionError } = await supabase
-      .from('inspections')
-      .select('id, product_type, inspector_id')
-      .eq('id', inspectionId)
-      .single()
-
-    if (inspectionError || !inspection) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'INSPECTION_NOT_FOUND',
-            message: `Inspection ${inspectionId} not found`
-          }
-        } as ApiResponse<null>,
-        { status: 404 }
-      )
-    }
+    const inspection = ownership.inspection;
 
     // Insert corrections
     const correctionsToInsert = body.corrections.map((correction) => ({
@@ -126,11 +127,17 @@ export async function POST(
     // compliance with the corrected data
     
     try {
+      const authHeader = request.headers.get('authorization') || '';
+      const forwardHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authHeader) {
+        forwardHeaders['Authorization'] = authHeader;
+      }
+
       const reEvalResponse = await fetch(
         `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/inspections/${inspectionId}/re-evaluate`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: forwardHeaders,
           body: JSON.stringify({}),
         }
       );
@@ -160,12 +167,12 @@ export async function POST(
           actionLabel: "Field Correction Overridden",
           inspectionId,
           commodityName: inspection.product_type || "Packaged Commodity",
-          actorId: inspection.inspector_id || "officer_enforcement",
+          actorId: user.id,
           actorName: "Legal Metrology Inspector",
           category: "USER_ACTION",
           details: `Inspector manually verified declaration '${item.field_name}': altered value from '${item.original_value || "null"}' to '${item.corrected_value}'.`,
           notification: {
-            targetUserId: inspection.inspector_id || "all",
+            targetUserId: user.id,
             type: "REVIEW",
             title: "Field Declaration Overridden",
             message: `Declaration '${item.field_name}' overridden to '${item.corrected_value}' for ${inspectionId.slice(0, 8).toUpperCase()}.`,

@@ -8,6 +8,27 @@ interface RuleChecklistItemProps {
   inspectionId?: string;
 }
 
+function cleanText(text?: string): string {
+  if (!text) return "";
+  return text
+    .replace(/\bstatutory\s+infraction\(s\)/gi, "compliance issue(s)")
+    .replace(/\bstatutory\s+infractions\b/gi, "compliance issues")
+    .replace(/\bstatutory\s+infraction\b/gi, "compliance issue")
+    .replace(/\binfraction\(s\)/gi, "issue(s)")
+    .replace(/\binfractions\b/gi, "compliance issues")
+    .replace(/\binfraction\b/gi, "compliance issue")
+    .replace(/\bstatutory\s+evaluation\b/gi, "compliance evaluation")
+    .replace(/\bstatutory\s+standards\b/gi, "metrology standards")
+    .replace(/\bstatutory\s+declarations\b/gi, "mandatory declarations")
+    .replace(/\bstatutory\s+declaration\b/gi, "mandatory declaration")
+    .replace(/\bstatutory\s+criteria\b/gi, "compliance criteria")
+    .replace(/\bstatutory\s+verdict\b/gi, "compliance verdict")
+    .replace(/\bstatutory\s+wording\b/gi, "mandatory wording")
+    .replace(/\bstatutory\s+clause\b/gi, "mandatory clause")
+    .replace(/\bstatutory\s+tax\s+notice\b/gi, "mandatory tax notice")
+    .replace(/\bstatutory\b/gi, "legal");
+}
+
 export const RuleChecklistItem: React.FC<RuleChecklistItemProps> = ({ result, inspectionId }) => {
   const verdict = String(result.result || result.status || "");
 
@@ -56,7 +77,7 @@ export const RuleChecklistItem: React.FC<RuleChecklistItemProps> = ({ result, in
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-bold text-[#0F172A]">
-              {result.ruleTitle || compat.ruleName || result.ruleId}
+              {cleanText(result.ruleTitle || compat.ruleName || result.ruleId)}
             </span>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#F1F5F9] text-[#475569] border border-[#CBD5E1]">
               {result.ruleNumber || compat.ruleCode || result.ruleId}
@@ -64,7 +85,7 @@ export const RuleChecklistItem: React.FC<RuleChecklistItemProps> = ({ result, in
           </div>
           {source && (
             <p className="text-[11px] text-[#1D4ED8] font-medium mt-0.5">
-              {source}
+              {cleanText(source)}
             </p>
           )}
         </div>
@@ -75,21 +96,21 @@ export const RuleChecklistItem: React.FC<RuleChecklistItemProps> = ({ result, in
       </div>
 
       <p className="text-xs text-[#0F172A] leading-relaxed">
-        {rationale}
+        {cleanText(rationale)}
       </p>
 
       {/* Observed vs Expected Comparison */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-xs">
         <div>
-          <span className="text-[10px] uppercase font-bold text-[#475569]">Observed Package Declaration</span>
+          <span className="text-[10px] uppercase font-bold text-[#475569]">Observed on Package</span>
           <p className="font-mono text-[#0F172A] font-semibold mt-0.5 break-words">
-            {observed || <span className="text-[#94A3B8] italic">Not observed on package</span>}
+            {cleanText(observed) || <span className="text-[#94A3B8] italic">Not observed on package</span>}
           </p>
         </div>
         <div>
-          <span className="text-[10px] uppercase font-bold text-[#475569]">Statutory Requirement</span>
+          <span className="text-[10px] uppercase font-bold text-[#475569]">Legal Requirement</span>
           <p className="text-[#0F172A] font-medium mt-0.5">
-            {expected || "Compliant with Legal Metrology (Packaged Commodities) Rules, 2011"}
+            {cleanText(expected) || "Compliant with Legal Metrology (Packaged Commodities) Rules, 2011"}
           </p>
         </div>
       </div>
@@ -100,7 +121,7 @@ export const RuleChecklistItem: React.FC<RuleChecklistItemProps> = ({ result, in
             href={`/inspections/${inspectionId}/evidence`}
             className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1D4ED8] hover:text-[#1E40AF] hover:bg-[#EFF6FF] px-2.5 py-1 rounded-md transition-all duration-150 cursor-pointer active:scale-95 border border-transparent hover:border-[#BFDBFE]"
           >
-            <span>Inspect Evidence Bounding Box</span>
+            <span>View Photo Evidence</span>
             <ExternalLink className="size-3" />
           </Link>
         </div>

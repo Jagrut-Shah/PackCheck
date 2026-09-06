@@ -69,6 +69,23 @@ export const EvidenceViewer: React.FC<EvidenceViewerProps> = ({
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#F1F5F9] text-[#475569]">
                 {selectedImage?.angle || "PANEL"}
               </span>
+              {selectedImage?.qualityStatus && (
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                    selectedImage.qualityStatus === "PASSED"
+                      ? "text-[#15803D] bg-[#DCFCE7] border-[#86EFAC]"
+                      : selectedImage.qualityStatus === "RETAKE_REQUIRED"
+                      ? "text-[#B91C1C] bg-[#FEE2E2] border-[#FCA5A5]"
+                      : "text-[#1D4ED8] bg-[#EFF6FF] border-[#BFDBFE]"
+                  }`}
+                >
+                  {selectedImage.qualityStatus === "PASSED"
+                    ? "Verified Quality"
+                    : selectedImage.qualityStatus === "RETAKE_REQUIRED"
+                    ? "Retake Required"
+                    : "Quality Pending"}
+                </span>
+              )}
             </div>
 
             {/* Loupe Mode Toggle & Tool Status */}
@@ -227,7 +244,14 @@ export const EvidenceViewer: React.FC<EvidenceViewerProps> = ({
                   </div>
                   <div className="flex flex-col text-[11px] leading-tight">
                     <span className="font-bold truncate max-w-[130px]">{img.fileName}</span>
-                    <span className="text-[10px] text-[#94A3B8]">{img.angle}</span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[10px] text-[#94A3B8]">{img.angle}</span>
+                      {img.qualityStatus === "RETAKE_REQUIRED" && (
+                        <span className="text-[9px] font-bold text-[#B91C1C] bg-[#FEE2E2] px-1 rounded">
+                          Retake Req.
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </button>
               ))}
@@ -272,7 +296,7 @@ export const EvidenceViewer: React.FC<EvidenceViewerProps> = ({
         {/* Detected Text Snippets */}
         <div className="rounded-xl border border-[#E2E8F0] bg-white p-4 shadow-2xs">
           <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
-            <h3 className="text-xs font-bold text-[#0F172A]">OCR Detected Text Blocks</h3>
+            <h3 className="text-xs font-bold text-[#0F172A]">Detected Text Blocks</h3>
             <span className="text-[10px] font-mono text-[#475569]">
               {ocrData?.blocks.length || 0} regions
             </span>
@@ -280,7 +304,7 @@ export const EvidenceViewer: React.FC<EvidenceViewerProps> = ({
 
           <div className="flex flex-col gap-2 mt-3 max-h-[380px] overflow-y-auto pr-1">
             {ocrData?.blocks.length === 0 ? (
-              <p className="text-xs text-[#94A3B8] p-4 text-center">No OCR text blocks available for this image.</p>
+              <p className="text-xs text-[#94A3B8] p-4 text-center">No text blocks detected for this image.</p>
             ) : (
               ocrData?.blocks.map((blk) => {
                 const isSelected = activeHighlightId === blk.id;
@@ -305,7 +329,7 @@ export const EvidenceViewer: React.FC<EvidenceViewerProps> = ({
                         <span>{blk.id}</span>
                       </span>
                       <span className="font-bold text-[#15803D]">
-                        {Math.round(blk.confidence * 100)}% conf
+                        {Math.round(blk.confidence * 100)}% confidence
                       </span>
                     </div>
                     <p className="text-xs leading-snug">{blk.text}</p>
@@ -316,10 +340,10 @@ export const EvidenceViewer: React.FC<EvidenceViewerProps> = ({
           </div>
         </div>
 
-        {/* Associated Statutory Findings */}
+        {/* Associated Compliance Issues */}
         <div className="rounded-xl border border-[#E2E8F0] bg-white p-4 shadow-2xs space-y-3">
           <div className="flex items-center justify-between border-b border-[#F1F5F9] pb-2">
-            <h3 className="text-xs font-bold text-[#0F172A]">Connected Statutory Findings</h3>
+            <h3 className="text-xs font-bold text-[#0F172A]">Related Compliance Issues</h3>
             <span className="text-[10px] font-mono text-[#475569]">
               {findings.length} findings
             </span>
@@ -328,7 +352,7 @@ export const EvidenceViewer: React.FC<EvidenceViewerProps> = ({
           {findings.length === 0 ? (
             <div className="p-3 rounded-lg bg-[#DCFCE7] border border-[#86EFAC] text-xs text-[#166534] font-medium flex items-center gap-2">
               <CheckCircle2 className="size-4 shrink-0" />
-              <span>No statutory infractions flagged for this inspection.</span>
+              <span>No compliance issues flagged for this inspection.</span>
             </div>
           ) : (
             <div className="space-y-2">
@@ -364,7 +388,7 @@ export const EvidenceViewer: React.FC<EvidenceViewerProps> = ({
                   className="w-full"
                   rightIcon={<ArrowRight className="size-3.5" />}
                 >
-                  Continue to Verification Report
+                  Continue to Inspection Report
                 </Button>
               </Link>
             </div>

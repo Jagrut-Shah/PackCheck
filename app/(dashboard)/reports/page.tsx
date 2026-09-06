@@ -50,8 +50,8 @@ export default function ReportsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Statutory Verification Reports"
-        description="Tamper-proof, programmatically generated Legal Metrology compliance reports with cryptographic verification hash."
+        title="Inspection Reports"
+        description="Official Legal Metrology compliance inspection reports with digital verification records."
       />
 
       {/* Filter / Search Bar */}
@@ -67,7 +67,7 @@ export default function ReportsPage() {
         </div>
 
         <span className="text-xs text-[#475569]">
-          {filteredReports.length} verification records logged
+          {filteredReports.length} inspection reports logged
         </span>
       </div>
 
@@ -90,13 +90,13 @@ export default function ReportsPage() {
               {isLoading ? (
                 <TableRow>
                   <TableCell colSpan={8} className="h-32 text-center text-xs text-[#475569]">
-                    Loading verification reports...
+                    Loading inspection reports...
                   </TableCell>
                 </TableRow>
               ) : filteredReports.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="h-32 text-center text-xs text-[#475569]">
-                    No verification reports found matching &quot;{searchQuery}&quot;.
+                    No inspection reports found matching &quot;{searchQuery}&quot;.
                   </TableCell>
                 </TableRow>
               ) : (

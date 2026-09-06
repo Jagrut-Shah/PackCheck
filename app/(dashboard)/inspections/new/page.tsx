@@ -70,14 +70,20 @@ export default function NewInspectionPage() {
         fileSize: item.file.size,
         fileSizeBytes: item.file.size,
         mimeType: item.file.type || "image/jpeg",
-        qualityStatus: "PASSED",
-        qualityScore: 0.94,
-        qualityMetrics: {
-          blur: 0.95,
-          brightness: 0.9,
-          glare: 0.92,
-          resolution: 0.96,
-          readability: 0.93,
+        qualityStatus:
+          item.qualityStatus === "POOR"
+            ? "RETAKE_REQUIRED"
+            : item.qualityStatus === "CHECKING"
+            ? "PENDING"
+            : "PASSED",
+        qualityScore: item.qualityScore > 0 ? item.qualityScore : 0.85,
+        qualityMetrics: item.qualityMetrics || {
+          blur: 0.85,
+          brightness: 0.85,
+          glare: 0.85,
+          resolution: 0.85,
+          readability: 0.85,
+          issuesDetected: item.qualityReasons,
         },
         uploadedAt: new Date().toISOString(),
       }));
@@ -121,8 +127,8 @@ export default function NewInspectionPage() {
       </div>
 
       <PageHeader
-        title="Initialize New Commodity Inspection"
-        description="Initiate legal verification for pre-packaged commodities under Legal Metrology Rules, 2011."
+        title="Start New Inspection"
+        description="Inspect pre-packaged commodities for compliance with Legal Metrology Rules, 2011."
       />
 
       {errorMessage && (
@@ -137,10 +143,10 @@ export default function NewInspectionPage() {
         <Card className="border-[#E2E8F0] bg-white shadow-2xs">
           <CardHeader>
             <CardTitle className="text-sm font-bold text-[#0F172A]">
-              Section A: Inspection Particulars
+              Section A: Inspection Details
             </CardTitle>
             <CardDescription className="text-xs text-[#475569]">
-              Commodity identifying declarations observed during physical inspection
+              Commodity details and package information
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-xs">
@@ -240,10 +246,10 @@ export default function NewInspectionPage() {
         <Card className="border-[#E2E8F0] bg-white shadow-2xs">
           <CardHeader>
             <CardTitle className="text-sm font-bold text-[#0F172A]">
-              Section B: Package Photographic Evidence Workspace
+              Section B: Package Photos & Evidence
             </CardTitle>
             <CardDescription className="text-xs text-[#475569]">
-              Upload any number of relevant package panel photos. The system accommodates flexible angles without rigid panel mandates.
+              Upload package photos from any angle. High-resolution, well-lit photos improve reading accuracy.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -269,7 +275,7 @@ export default function NewInspectionPage() {
             isLoading={isSubmitting}
             rightIcon={<ArrowRight className="size-4" />}
           >
-            Start Verification Pipeline
+            Start Inspection & Analysis
           </Button>
         </div>
       </form>

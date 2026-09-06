@@ -71,18 +71,18 @@ function getDefaultNavigationMeta(pathname: string): {
     return {
       breadcrumbItems: [
         { label: "Inspection Portal", href: "/dashboard" },
-        { label: "Verification Reports" },
+        { label: "Inspection Reports" },
       ],
-      title: "Statutory Verification Reports",
+      title: "Inspection Reports",
     };
   }
   if (pathname.startsWith("/analytics/rules")) {
     return {
       breadcrumbItems: [
         { label: "Inspection Portal", href: "/dashboard" },
-        { label: "Statutory Rule Performance" },
+        { label: "Rule Analytics & Insights" },
       ],
-      title: "Rule Performance & Penalties",
+      title: "Rule Performance & Insights",
     };
   }
   if (pathname.startsWith("/profile") || pathname.startsWith("/settings")) {

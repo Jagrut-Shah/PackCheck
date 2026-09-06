@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiResponse } from "@/lib/types/common";
 import { markAuthoritativeNotificationRead } from "@/lib/events/activity-event";
+import { requireAuth } from "@/lib/auth/server";
 
 export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
+  const { user, errorResponse } = await requireAuth(request);
+  if (errorResponse) {
+    return errorResponse;
+  }
+
   try {
     const { id: notificationOrInspectionId } = await context.params;
-    const searchParams = request.nextUrl.searchParams;
-    const userId = searchParams.get("user_id") || undefined;
 
-    await markAuthoritativeNotificationRead(notificationOrInspectionId, userId);
+    await markAuthoritativeNotificationRead(notificationOrInspectionId, user.id);
 
     return NextResponse.json(
       {

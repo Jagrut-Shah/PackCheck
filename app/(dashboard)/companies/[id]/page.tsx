@@ -326,13 +326,13 @@ export default function CompanyDetailPage({ params }: CompanyDetailPageProps) {
             <CardHeader className="pb-2 border-b border-[#F1F5F9]">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-[#0F172A] flex items-center gap-2">
                 <Info className="size-4 text-[#1D4ED8]" />
-                <span>Statutory Standing</span>
+                <span>Compliance Standing</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-3 text-xs space-y-2">
               {packer.totalAudits === 0 ? (
                 <p className="text-[#64748B] leading-relaxed">
-                  No statutory audits have been conducted on packages under this registration yet. Once field
+                  No compliance inspections have been conducted on packages under this registration yet. Once field
                   inspections occur, all compliance checks will automatically aggregate here.
                 </p>
               ) : packer.flaggedAudits > 0 ? (
@@ -402,7 +402,7 @@ export default function CompanyDetailPage({ params }: CompanyDetailPageProps) {
               <Card className="border-[#E2E8F0] bg-white shadow-2xs">
                 <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-[#F1F5F9]">
                   <CardTitle className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-                    Associated Statutory Inspections
+                    Associated Inspections
                   </CardTitle>
                   <span className="text-[11px] text-[#64748B] font-medium">
                     {inspections.length} recorded
@@ -485,7 +485,7 @@ export default function CompanyDetailPage({ params }: CompanyDetailPageProps) {
               <Card className="border-[#E2E8F0] bg-white shadow-2xs">
                 <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-[#F1F5F9]">
                   <CardTitle className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-                    Statutory Rule Discrepancies & Violations
+                    Rule Discrepancies & Violations
                   </CardTitle>
                   <span className="text-[11px] text-[#64748B] font-medium">
                     {findings.length} findings
@@ -499,7 +499,7 @@ export default function CompanyDetailPage({ params }: CompanyDetailPageProps) {
                       </div>
                       <p className="text-xs font-semibold text-[#0F172A]">Zero Violations Recorded</p>
                       <p className="text-[11px] text-[#64748B] max-w-sm">
-                        This registered packer has maintained full statutory compliance across all documented inspections.
+                        This registered packer has maintained full compliance across all documented inspections.
                       </p>
                     </div>
                   ) : (

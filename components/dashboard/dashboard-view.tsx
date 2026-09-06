@@ -139,7 +139,7 @@ export function DashboardView() {
               </span>
             </div>
             <span className="text-[11px] text-[#94A3B8] font-normal mt-0.5">
-              Full statutory compliance
+              Passed all compliance checks
             </span>
           </div>
 
@@ -154,7 +154,7 @@ export function DashboardView() {
               <span className="text-xs font-bold text-[#B91C1C]">Violations</span>
             </div>
             <span className="text-[11px] text-[#94A3B8] font-normal mt-0.5">
-              Mandatory notice recommended
+              Issues found requiring attention
             </span>
           </div>
 
@@ -169,7 +169,7 @@ export function DashboardView() {
               <span className="text-xs font-bold text-[#B45309]">Action needed</span>
             </div>
             <span className="text-[11px] text-[#94A3B8] font-normal mt-0.5">
-              Blur or low confidence flag
+              Image blur or low reading confidence
             </span>
           </div>
         </div>
@@ -182,11 +182,11 @@ export function DashboardView() {
             <div className="flex items-center gap-2">
               <AlertTriangle className="size-4 text-[#B45309]" />
               <h2 className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-                Requires Inspector Action ({attentionRecords.length})
+                Requires Officer Attention ({attentionRecords.length})
               </h2>
             </div>
             <span className="text-[11px] text-[#64748B]">
-              Unresolved infractions and blurry label flags
+              Flagged issues and low-confidence label scans
             </span>
           </div>
 
@@ -366,7 +366,7 @@ export function DashboardView() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={selectedRecord ? `Inspection Summary: ${selectedRecord.inspectionNumber}` : "Inspection Record"}
-        description="Statutory Legal Metrology verification details"
+        description="Inspection and compliance check details"
         size="lg"
       >
         {selectedRecord && (

@@ -4,6 +4,7 @@ import { OCRResult } from "@/lib/types/ocr";
 import { ExtractedDeclarations } from "@/lib/types/extraction";
 import { ApiResponse, PROCESSING_STATUS } from "@/lib/types/common";
 import { recordActivityEvent } from "@/lib/events/activity-event";
+import { requireAuth, verifyInspectionOwnership } from "@/lib/auth/server";
 
 interface ExtractDeclarationsRequestBody {
   rawText?: string;
@@ -21,6 +22,9 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
+    const { user, errorResponse } = await requireAuth(request);
+    if (errorResponse) return errorResponse;
+
     const { id: inspectionId } = await context.params;
 
     if (!inspectionId) {
@@ -33,6 +37,21 @@ export async function POST(
           },
         } as ApiResponse<null>,
         { status: 400 }
+      );
+    }
+
+    // Verify ownership
+    const ownership = await verifyInspectionOwnership(inspectionId, user.id);
+    if (!ownership.authorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "INSPECTION_NOT_FOUND",
+            message: ownership.errorMessage || `Inspection ${inspectionId} not found`,
+          },
+        } as ApiResponse<null>,
+        { status: ownership.errorStatus || 404 }
       );
     }
 
@@ -75,6 +94,7 @@ export async function POST(
         actionLabel: "Declarations Structured",
         inspectionId,
         commodityName: extractionCtx.productName || declarations.commodityName?.value || "Packaged Commodity",
+        actorId: user.id,
         actorName: "Declarations Extraction Engine",
         category: "PIPELINE",
         details: `Structured statutory declarations under Legal Metrology Rule 6 (engine: ${model}).`,

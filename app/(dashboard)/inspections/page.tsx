@@ -73,7 +73,7 @@ export default function InspectionsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Commodity Inspections"
-        description="Statutory enforcement audits and label verification records under Legal Metrology Rules, 2011."
+        description="Package label audits and compliance inspection records under Legal Metrology Rules, 2011."
         actions={
           <Link href="/inspections/new">
             <Button variant="primary" size="sm" leftIcon={<Plus className="size-3.5" />}>
@@ -158,7 +158,7 @@ export default function InspectionsPage() {
               {isLoading ? (
                 <TableRow>
                   <TableCell colSpan={7} className="h-36 text-center text-xs text-[#475569]">
-                    Loading statutory inspection records...
+                    Loading inspection records...
                   </TableCell>
                 </TableRow>
               ) : errorMessage ? (

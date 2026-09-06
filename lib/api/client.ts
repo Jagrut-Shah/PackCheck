@@ -5,6 +5,7 @@
  */
 
 import { ApiResponse, ApiErrorPayload } from "@/lib/types/common";
+import { supabase } from "@/lib/supabase";
 
 export class ApiClientError extends Error {
   code: string;
@@ -33,10 +34,25 @@ interface RequestOptions {
 export async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", headers = {}, body, cache = "no-store" } = options;
 
+  const mergedHeaders: Record<string, string> = { ...headers };
+
+  // Automatically propagate authenticated Supabase session Bearer token
+  if (!mergedHeaders["Authorization"] && !mergedHeaders["authorization"]) {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (token) {
+        mergedHeaders["Authorization"] = `Bearer ${token}`;
+      }
+    } catch {
+      // Browser environment or storage not ready
+    }
+  }
+
   const config: RequestInit = {
     method,
     cache,
-    headers: { ...headers },
+    headers: mergedHeaders,
   };
 
   if (body) {
