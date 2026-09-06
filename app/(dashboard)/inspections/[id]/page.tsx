@@ -112,7 +112,7 @@ export default function InspectionDetailPage({ params }: InspectionDetailPagePro
             <CardContent className="p-4 space-y-3 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-[#475569]">Commodity / Product</span>
+                  <span className="text-[10px] uppercase font-bold text-[#475569]">Commodity</span>
                   <p className="font-bold text-[#0F172A] mt-0.5">
                     {inspection.product || inspection.commodity?.commodityName}
                   </p>

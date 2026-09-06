@@ -35,6 +35,12 @@ export const STATUS_CONFIG: Record<
     textClass: "text-[#475569]",
     borderClass: "border-[#CBD5E1]",
   },
+  [INSPECTION_STATUS.PENDING]: {
+    label: "Pending",
+    bgClass: "bg-[#F1F5F9]",
+    textClass: "text-[#475569]",
+    borderClass: "border-[#CBD5E1]",
+  },
   [INSPECTION_STATUS.PROCESSING]: {
     label: "Processing",
     bgClass: "bg-[#E0F2FE]",
@@ -52,6 +58,12 @@ export const STATUS_CONFIG: Record<
     bgClass: "bg-[#DCFCE7]",
     textClass: "text-[#166534]",
     borderClass: "border-[#86EFAC]",
+  },
+  [INSPECTION_STATUS.FAILED]: {
+    label: "Failed",
+    bgClass: "bg-[#FEE2E2]",
+    textClass: "text-[#991B1B]",
+    borderClass: "border-[#FCA5A5]",
   },
 };
 

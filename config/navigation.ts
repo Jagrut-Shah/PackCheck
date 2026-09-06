@@ -43,7 +43,6 @@ export const CENTRAL_NAVIGATION: NavigationItem[] = [
     label: "Inspections",
     route: "/inspections",
     iconName: "ClipboardCheck",
-    badge: "Active",
     group: "INSPECTION",
     matchMode: "prefix",
   },
@@ -80,20 +79,12 @@ export const CENTRAL_NAVIGATION: NavigationItem[] = [
     matchMode: "prefix",
   },
 
-  // Officer Profile & System Administration Group
+  // Officer Profile
   {
     id: "profile",
     label: "Officer Profile",
     route: "/profile",
     iconName: "User",
-    group: "MANAGEMENT",
-    matchMode: "prefix",
-  },
-  {
-    id: "settings",
-    label: "System Settings",
-    route: "/settings",
-    iconName: "Settings",
     group: "MANAGEMENT",
     matchMode: "prefix",
   },

@@ -83,13 +83,33 @@ const ComplianceStampBadge: React.FC<{ result: string; hash: string; date: strin
 export const ReportSummaryView: React.FC<ReportSummaryViewProps> = ({ report }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGenerated, setIsGenerated] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
-  const handleGeneratePdf = () => {
+  const handleGeneratePdf = async () => {
     setIsGenerating(true);
-    setTimeout(() => {
-      setIsGenerating(false);
+    setDownloadError(null);
+    try {
+      const endpoint = `/api/inspections/${report.inspectionId}/report/pdf`;
+      const res = await fetch(endpoint);
+      if (!res.ok) {
+        throw new Error(`PDF generation returned status ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Verification_Report_${(report.reportNumber || report.inspectionId).replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
       setIsGenerated(true);
-    }, 800);
+    } catch (err) {
+      console.error("PDF download error:", err);
+      setDownloadError(err instanceof Error ? err.message : "Failed to download PDF report");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const inspectionNum = report.inspectionNumber || report.inspectionId;
@@ -129,7 +149,7 @@ export const ReportSummaryView: React.FC<ReportSummaryViewProps> = ({ report }) 
             leftIcon={isGenerated ? <Check className="size-3.5" /> : <Download className="size-3.5" />}
             onClick={handleGeneratePdf}
           >
-            {isGenerated ? "PDF Generated (Demo)" : "Generate PDF"}
+            {isGenerated ? "PDF Downloaded" : "Generate Signed PDF"}
           </Button>
         </div>
       </div>
@@ -138,8 +158,15 @@ export const ReportSummaryView: React.FC<ReportSummaryViewProps> = ({ report }) 
         <div className="p-3 rounded-lg border border-[#86EFAC] bg-[#DCFCE7] text-xs text-[#166534] font-medium flex items-center gap-2 no-print">
           <Check className="size-4 shrink-0" />
           <span>
-            Mock PDF export triggered. In production, this generates a server-side signed PDF conforming to Legal Metrology court standards.
+            Official Statutory PDF Report generated, cryptographically signed, and downloaded successfully.
           </span>
+        </div>
+      )}
+
+      {downloadError && (
+        <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-xs text-red-900 font-medium flex items-center gap-2 no-print">
+          <AlertTriangle className="size-4 shrink-0 text-red-600" />
+          <span>{downloadError}</span>
         </div>
       )}
 

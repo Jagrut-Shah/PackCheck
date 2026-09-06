@@ -1,10 +1,7 @@
-"""
-PackCheck AI - OCR Service Application Configuration.
-Uses pydantic-settings to manage environment variables cleanly.
-"""
+
 
 import os
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,15 +17,22 @@ class Settings(BaseSettings):
     APP_NAME: str = "packcheck-ocr-service"
     APP_VERSION: str = "1.0.0"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
-    DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
+    DEBUG: bool = os.getenv("DEBUG", "false" if os.getenv("ENVIRONMENT") == "production" else "true").lower() == "true"
 
     # Server settings
     HOST: str = "0.0.0.0"
     PORT: int = 8000
-    CORS_ORIGINS: List[str] = ["*"]
+    CORS_ORIGINS: List[str] = (
+        ["https://packcheck.ai"]
+        if os.getenv("ENVIRONMENT") == "production"
+        else ["http://localhost:3000", "http://127.0.0.1:3000"]
+    )
 
     # Security settings
-    ALLOW_LOCAL_FILE_ACCESS: bool = os.getenv("ALLOW_LOCAL_FILE_ACCESS", "true").lower() == "true"
+    OCR_SERVICE_API_KEY: Optional[str] = os.getenv("OCR_SERVICE_API_KEY")
+    ALLOW_LOCAL_FILE_ACCESS: bool = (
+        os.getenv("ALLOW_LOCAL_FILE_ACCESS", "false" if os.getenv("ENVIRONMENT") == "production" else "true").lower() == "true"
+    )
     ALLOWED_HTTP_DOMAINS: List[str] = ["*"]
 
     # Logging

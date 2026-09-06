@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { ApiResponse } from '@/lib/types/common'
+import { recordActivityEvent } from '@/lib/events/activity-event'
+import {
+  ensurePackerForInspection,
+  recordInspectionCompanyLink,
+  getAllInspectionCompanyLinks
+} from '@/lib/companies/storage'
 
 const FILE_SIZE_LIMIT_BYTES = 15 * 1024 * 1024 // 15 MB
 
@@ -23,6 +29,8 @@ interface UploadResponse {
 interface InspectionHistoryItem {
   inspection_id: string
   product_type: string
+  company_id?: string
+  company_name?: string
   status: string
   violation_count: number
   created_at: string
@@ -168,6 +176,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       )?.trim()
     )
 
+    const manufacturerName = (
+      (formData.get('manufacturer_name') as string) ||
+      (formData.get('manufacturerName') as string) ||
+      (formData.get('company_name') as string) ||
+      (formData.get('company') as string)
+    )?.trim()
+
+    const brandName = (
+      (formData.get('brand_name') as string) ||
+      (formData.get('brandName') as string) ||
+      (formData.get('brand') as string)
+    )?.trim()
+
     if (!productType) {
       return NextResponse.json(
         {
@@ -311,8 +332,44 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const now = new Date().toISOString()
 
-    const { data: inspectionData, error: inspectionError } =
-      await supabase
+    let linkedPackerId: string | null = null
+    let linkedCompanyName: string | null = null
+
+    if (manufacturerName) {
+      try {
+        const packer = await ensurePackerForInspection(manufacturerName, brandName)
+        if (packer) {
+          linkedPackerId = packer.id
+          linkedCompanyName = packer.name
+        }
+      } catch (pErr) {
+        console.warn('Could not auto-link packer entity for inspection:', pErr)
+      }
+    }
+
+    const insertPayload: Record<string, any> = {
+      inspector_id: inspectorId,
+      product_type: productType,
+      status: 'PENDING',
+      created_at: now,
+      updated_at: now,
+    }
+    if (linkedPackerId) insertPayload.company_id = linkedPackerId
+    if (linkedCompanyName || manufacturerName) {
+      insertPayload.company_name = linkedCompanyName || manufacturerName
+    }
+
+    let inspectionData: any = null
+    let inspectionError: any = null
+
+    const primaryInsert = await supabase
+      .from('inspections')
+      .insert([insertPayload])
+      .select()
+      .single()
+
+    if (primaryInsert.error && primaryInsert.error.message?.includes('company_')) {
+      const fallbackInsert = await supabase
         .from('inspections')
         .insert([
           {
@@ -325,6 +382,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ])
         .select()
         .single()
+      inspectionData = fallbackInsert.data
+      inspectionError = fallbackInsert.error
+    } else {
+      inspectionData = primaryInsert.data
+      inspectionError = primaryInsert.error
+    }
+
+    if (inspectionData && (linkedPackerId || linkedCompanyName || manufacturerName)) {
+      recordInspectionCompanyLink(
+        inspectionData.id,
+        linkedPackerId || "",
+        linkedCompanyName || manufacturerName || ""
+      );
+    }
 
     if (inspectionError || !inspectionData) {
       console.error(
@@ -450,7 +521,57 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // --------------------------------------------------------
-    // 12. Return successful response
+    // 12. Record Authoritative Activity Events & Notifications
+    // --------------------------------------------------------
+    try {
+      await recordActivityEvent({
+        action: 'INSPECTION_CREATED',
+        actionLabel: 'Inspection Initialized',
+        inspectionId: inspectionData.id,
+        commodityName: productType,
+        actorId: inspectorId,
+        actorName: 'Legal Metrology Inspector',
+        category: 'USER_ACTION',
+        details: `Initiated statutory market surveillance inspection for ${productType}. Initial status: PENDING.`,
+        notification: {
+          targetUserId: inspectorId,
+          type: 'INFO',
+          title: 'Inspection Initialized',
+          message: `Market surveillance inspection initialized for ${productType} (${inspectionData.id.slice(0, 8).toUpperCase()}).`,
+          actionUrl: `/inspections/${inspectionData.id}/processing`,
+          metadata: {
+            product_type: productType,
+            status: 'PENDING',
+            violation_count: 0,
+          },
+        },
+        metadata: {
+          product_type: productType,
+          status: 'PENDING',
+          images_count: uploadedImages.length,
+        },
+      });
+
+      await recordActivityEvent({
+        action: 'IMAGE_UPLOADED',
+        actionLabel: 'Photograph Evidence Ingested',
+        inspectionId: inspectionData.id,
+        commodityName: productType,
+        actorId: inspectorId,
+        actorName: 'Legal Metrology Inspector',
+        category: 'PIPELINE',
+        details: `Captured and securely ingested ${uploadedImages.length} photographic evidence file(s) into statutory storage.`,
+        metadata: {
+          images_count: uploadedImages.length,
+          primary_image: uploadedImages[0]?.image_url,
+        },
+      });
+    } catch (eventErr) {
+      console.warn('Non-blocking activity event recording error:', eventErr);
+    }
+
+    // --------------------------------------------------------
+    // 13. Return successful response
     // --------------------------------------------------------
 
     return NextResponse.json(
@@ -645,32 +766,48 @@ export async function GET(
     // Build history response
     // --------------------------------------------------------
 
+    const companyLinks = getAllInspectionCompanyLinks();
+
     const historyItems:
       InspectionHistoryItem[] =
       inspectionList.map(
         (inspection: {
           id: string
           product_type: string
+          company_id?: string
+          company_name?: string
           status: string
           created_at: string
-        }) => ({
-          inspection_id:
-            inspection.id,
+        }) => {
+          const link = companyLinks[inspection.id];
+          const companyName = inspection.company_name || link?.companyName || "";
+          const companyId = inspection.company_id || link?.companyId || "";
 
-          product_type:
-            inspection.product_type,
+          return {
+            inspection_id:
+              inspection.id,
 
-          status:
-            inspection.status,
+            product_type:
+              inspection.product_type,
 
-          violation_count:
-            violationsByInspection[
-              inspection.id
-            ] || 0,
+            company_id:
+              companyId,
 
-          created_at:
-            inspection.created_at,
-        })
+            company_name:
+              companyName,
+
+            status:
+              inspection.status,
+
+            violation_count:
+              violationsByInspection[
+                inspection.id
+              ] || 0,
+
+            created_at:
+              inspection.created_at,
+          };
+        }
       )
 
     return NextResponse.json(

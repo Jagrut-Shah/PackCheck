@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 
 import { useToast } from "@/components/common/toast";
+import { supabase } from "@/lib/supabase";
 
 export interface AuditLogEntry {
   id: string;
@@ -51,6 +52,19 @@ export interface AuditLogEntry {
   ipAddress: string;
 }
 
+// Safely parse timestamps ensuring Postgres timestamps without 'Z' are parsed as UTC
+function parseUtcDate(dateString: string): Date {
+  if (!dateString) return new Date();
+  let s = String(dateString).trim();
+  if (s.includes("T") && !s.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(s)) {
+    s = `${s}Z`;
+  } else if (!s.includes("T") && s.includes(" ") && !s.endsWith("Z")) {
+    s = `${s.replace(" ", "T")}Z`;
+  }
+  const date = new Date(s);
+  return isNaN(date.getTime()) ? new Date(dateString) : date;
+}
+
 export default function AuditHistoryPage() {
   const toast = useToast();
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
@@ -60,8 +74,10 @@ export default function AuditHistoryPage() {
   const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
-    async function loadLogs() {
-      setIsLoading(true);
+    async function loadLogs(silent = false) {
+      if (!silent) {
+        setIsLoading(true);
+      }
       try {
         const res = await fetch("/api/audit-logs");
         const json = await res.json();
@@ -71,10 +87,33 @@ export default function AuditHistoryPage() {
       } catch (err) {
         console.error("Failed to load real audit trail:", err);
       } finally {
-        setIsLoading(false);
+        if (!silent) {
+          setIsLoading(false);
+        }
       }
     }
-    loadLogs();
+    loadLogs(false);
+
+    // Realtime channel subscription for instant audit log sync
+    const channel = supabase.channel("packcheck-activities-audit");
+    channel
+      .on("broadcast", { event: "activity" }, (payload: any) => {
+        if (payload?.payload?.audit) {
+          const newAudit = payload.payload.audit as AuditLogEntry;
+          setLogs((prev) => {
+            if (prev.some((l) => l.id === newAudit.id)) return prev;
+            return [newAudit, ...prev];
+          });
+        }
+      })
+      .subscribe();
+
+    // Silent background polling every 15s without clearing or flashing table
+    const interval = setInterval(() => loadLogs(true), 15000);
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const filteredLogs = logs.filter((entry) => {
@@ -218,7 +257,7 @@ export default function AuditHistoryPage() {
               </TableRow>
             ) : (
               filteredLogs.map((log) => {
-              const date = new Date(log.timestamp);
+              const date = parseUtcDate(log.timestamp);
               const formattedDate = date.toLocaleDateString("en-IN", {
                 day: "2-digit",
                 month: "short",

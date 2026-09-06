@@ -2,14 +2,22 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Search, Plus, MapPin, ClipboardList, CheckCircle2, AlertTriangle } from "lucide-react";
+import {
+  Building2,
+  Search,
+  Plus,
+  MapPin,
+  ClipboardList,
+  CheckCircle2,
+  AlertTriangle,
+} from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { getCompanies } from "@/lib/api/companies";
-import { RegisteredPacker } from "@/mocks/companies";
+import { getCompanies, RegisteredPacker } from "@/lib/api/companies";
+import { RegisterPackerModal } from "@/components/companies/register-packer-modal";
 
 export default function CompaniesPage() {
   const router = useRouter();
@@ -17,30 +25,40 @@ export default function CompaniesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [stateFilter, setStateFilter] = useState("ALL");
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+
+  const loadCompanies = async () => {
+    setIsLoading(true);
+    try {
+      const data = await getCompanies();
+      setCompanies(data);
+    } catch (err) {
+      console.error("Error loading companies", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function load() {
-      setIsLoading(true);
-      try {
-        const data = await getCompanies();
-        setCompanies(data);
-      } catch (err) {
-        console.error("Error loading companies", err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    load();
+    loadCompanies();
   }, []);
+
+  const handlePackerRegistered = (newPacker: RegisteredPacker) => {
+    setCompanies((prev) => [
+      newPacker,
+      ...prev.filter((p) => p.id !== newPacker.id),
+    ]);
+  };
 
   const filteredCompanies = companies.filter((comp) => {
     const q = searchQuery.toLowerCase().trim();
     const matchesSearch =
       !q ||
       comp.name.toLowerCase().includes(q) ||
-      comp.brand.toLowerCase().includes(q) ||
+      (comp.brand && comp.brand.toLowerCase().includes(q)) ||
       comp.registrationNumber.toLowerCase().includes(q);
-    const matchesState = stateFilter === "ALL" || comp.state.includes(stateFilter);
+    const matchesState =
+      stateFilter === "ALL" || comp.state.toLowerCase().includes(stateFilter.toLowerCase());
     return matchesSearch && matchesState;
   });
 
@@ -50,7 +68,12 @@ export default function CompaniesPage() {
         title="Registered Manufacturers & Pre-Packers"
         description="Entities registered under Rule 27 of Legal Metrology (Packaged Commodities) Rules, 2011."
         actions={
-          <Button variant="primary" size="sm" leftIcon={<Plus className="size-3.5" />}>
+          <Button
+            variant="primary"
+            size="sm"
+            leftIcon={<Plus className="size-3.5" />}
+            onClick={() => setIsRegisterModalOpen(true)}
+          >
             Register Packer
           </Button>
         }
@@ -76,14 +99,18 @@ export default function CompaniesPage() {
           <option value="ALL">All States / UTs</option>
           <option value="Delhi">Delhi NCR</option>
           <option value="Gujarat">Gujarat</option>
+          <option value="Maharashtra">Maharashtra</option>
           <option value="Uttarakhand">Uttarakhand</option>
+          <option value="Haryana">Haryana</option>
+          <option value="Karnataka">Karnataka</option>
         </select>
       </div>
 
       {/* Companies Grid */}
       {isLoading ? (
         <div className="p-12 text-center text-xs text-[#475569]">
-          Loading registered manufacturer records...
+          <div className="inline-flex h-6 w-6 animate-spin rounded-full border-2 border-[#CBD5E1] border-t-[#1D4ED8] mb-2" />
+          <p>Loading registered manufacturer records...</p>
         </div>
       ) : filteredCompanies.length === 0 ? (
         <div className="p-12 text-center text-xs text-[#475569] border border-[#E2E8F0] rounded-xl bg-white">
@@ -103,42 +130,81 @@ export default function CompaniesPage() {
                     <div className="size-8 rounded-lg bg-[#EFF6FF] text-[#1D4ED8] flex items-center justify-center shrink-0">
                       <Building2 className="size-4" />
                     </div>
-                    <Badge variant={packer.status === "ACTIVE" ? "pass" : "review"}>
-                      {packer.status === "ACTIVE" ? "Active License" : "Under Review"}
+                    <Badge
+                      variant={
+                        packer.status === "ACTIVE"
+                          ? "pass"
+                          : packer.status === "UNDER_REVIEW"
+                          ? "review"
+                          : "fail"
+                      }
+                    >
+                      {packer.status === "ACTIVE"
+                        ? "Active License"
+                        : packer.status === "UNDER_REVIEW"
+                        ? "Under Review"
+                        : "Suspended"}
                     </Badge>
                   </div>
 
                   <div>
-                    <h3 className="text-xs font-bold text-[#0F172A] line-clamp-2">{packer.name}</h3>
-                    <span className="text-[11px] text-[#1D4ED8] font-semibold">{packer.brand}</span>
+                    <h3 className="text-xs font-bold text-[#0F172A] line-clamp-2">
+                      {packer.name}
+                    </h3>
+                    {packer.brand && (
+                      <span className="text-[11px] text-[#1D4ED8] font-semibold">
+                        {packer.brand}
+                      </span>
+                    )}
+                    <span className="block text-[10px] text-[#64748B] font-mono mt-0.5">
+                      {packer.registrationNumber}
+                    </span>
                   </div>
                 </div>
 
                 <div className="pt-3 border-t border-[#F1F5F9] text-[11px] text-[#475569] space-y-1.5">
                   <div className="flex justify-between">
-                    <span>Location:</span>
-                    <span className="text-[#0F172A]">{packer.district}, {packer.state}</span>
+                    <span>Jurisdiction:</span>
+                    <span className="text-[#0F172A] font-medium truncate max-w-[140px]" title={`${packer.district}, ${packer.state}`}>
+                      {packer.district}, {packer.state}
+                    </span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Total Inspections:</span>
-                    <span className="text-[#0F172A] font-semibold">{packer.totalAudits} audits</span>
+                    <span>Inspections / Audits:</span>
+                    <span className="text-[#0F172A] font-bold">
+                      {packer.totalAudits > 0
+                        ? `${packer.totalAudits} audit${packer.totalAudits > 1 ? "s" : ""}`
+                        : "No inspections yet"}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span>Latest Inspection:</span>
-                    <span className="text-[#0F172A] font-mono">01 Feb 2026</span>
+                    <span className="text-[#0F172A] font-mono text-[10px]">
+                      {packer.lastInspectionDate && packer.totalAudits > 0
+                        ? new Date(packer.lastInspectionDate).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })
+                        : "—"}
+                    </span>
                   </div>
                   <div className="flex justify-between items-center pt-1 border-t border-[#F1F5F9]">
-                    <span className="font-semibold text-[#0F172A]">Recent Audit Verdict:</span>
+                    <span className="font-semibold text-[#0F172A]">Compliance Standing:</span>
                     <span
                       className={`font-bold text-xs ${
-                        packer.complianceRate >= 90
+                        packer.totalAudits === 0
+                          ? "text-[#64748B]"
+                          : packer.flaggedAudits === 0
                           ? "text-[#166534]"
-                          : packer.complianceRate >= 80
-                          ? "text-[#92400E]"
                           : "text-[#991B1B]"
                       }`}
                     >
-                      {packer.complianceRate >= 90 ? "PASS" : "POTENTIAL NON-COMPLIANCE"}
+                      {packer.totalAudits === 0
+                        ? "Pending First Audit"
+                        : packer.flaggedAudits === 0
+                        ? "COMPLIANT"
+                        : `${packer.flaggedAudits} VIOLATION${packer.flaggedAudits > 1 ? "S" : ""}`}
                     </span>
                   </div>
                 </div>
@@ -147,6 +213,13 @@ export default function CompaniesPage() {
           ))}
         </div>
       )}
+
+      {/* Register Packer Modal */}
+      <RegisterPackerModal
+        isOpen={isRegisterModalOpen}
+        onClose={() => setIsRegisterModalOpen(false)}
+        onSuccess={handlePackerRegistered}
+      />
     </div>
   );
 }

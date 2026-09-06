@@ -1,10 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { getCurrentUser, signOut } from "@/lib/auth";
-import { UserProfile } from "@/lib/types/user";
+import { usePathname } from "next/navigation";
 import {
   ShieldCheck,
   LayoutDashboard,
@@ -15,7 +13,6 @@ import {
   BarChart3,
   User,
   Settings,
-  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -52,29 +49,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
 }) => {
   const pathname = usePathname();
-  const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-
-  useEffect(() => {
-    async function loadUser() {
-      try {
-        const u = await getCurrentUser();
-        if (u) setCurrentUser(u);
-      } catch (err) {
-        console.warn("Could not load current user session", err);
-      }
-    }
-    loadUser();
-  }, []);
-
-  const handleSignOut = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    try {
-      await signOut();
-    } finally {
-      router.push("/login");
-    }
-  };
 
   const isItemActive = (item: NavigationItem): boolean => {
     if (activeTab) {
@@ -177,46 +151,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             MANAGEMENT
           </span>
           {renderNavList(MANAGEMENT_NAV_ITEMS)}
-        </div>
-      </div>
-
-      {/* Light User Profile Footer */}
-      <div className="p-3 border-t border-[#E2E8F0] bg-[#F8FAFC]">
-        <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-[#E2E8F0] shadow-2xs">
-          <Link
-            href="/profile"
-            onClick={onCloseMobile}
-            className="flex items-center gap-2.5 min-w-0 flex-1 hover:opacity-80 transition-opacity"
-            title={currentUser?.email ? `${currentUser.fullName} (${currentUser.email})` : "View Profile"}
-          >
-            <div className="size-7 rounded-full bg-[#EFF6FF] border border-[#BFDBFE] flex items-center justify-center text-[11px] font-bold text-[#1D4ED8] shrink-0">
-              {currentUser?.fullName
-                ? currentUser.fullName
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("")
-                    .substring(0, 2)
-                    .toUpperCase()
-                : "LM"}
-            </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-xs font-semibold text-[#0F172A] truncate">
-                {currentUser?.fullName || "Senior Inspector"}
-              </span>
-              <span className="text-[10px] text-[#64748B] truncate">
-                {currentUser?.department || currentUser?.role || "Legal Metrology Dept"}
-              </span>
-            </div>
-          </Link>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="p-1 rounded text-[#64748B] hover:text-[#DC2626] hover:bg-[#FEE2E2] transition-colors cursor-pointer"
-            title="Sign out"
-            aria-label="Sign out"
-          >
-            <LogOut className="size-3.5" />
-          </button>
         </div>
       </div>
     </aside>

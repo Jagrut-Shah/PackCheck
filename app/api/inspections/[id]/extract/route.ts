@@ -3,6 +3,7 @@ import { extractDeclarationsFromOCR, ExtractionContext } from "@/lib/extraction"
 import { OCRResult } from "@/lib/types/ocr";
 import { ExtractedDeclarations } from "@/lib/types/extraction";
 import { ApiResponse, PROCESSING_STATUS } from "@/lib/types/common";
+import { recordActivityEvent } from "@/lib/events/activity-event";
 
 interface ExtractDeclarationsRequestBody {
   rawText?: string;
@@ -67,6 +68,25 @@ export async function POST(
       extractionCtx
     );
 
+    try {
+      const model = declarations.modelUsed || "Hybrid (Deterministic + Gemini 3.8 Flash)";
+      await recordActivityEvent({
+        action: "EXTRACTION_COMPLETED",
+        actionLabel: "Declarations Structured",
+        inspectionId,
+        commodityName: extractionCtx.productName || declarations.commodityName?.value || "Packaged Commodity",
+        actorName: "Declarations Extraction Engine",
+        category: "PIPELINE",
+        details: `Structured statutory declarations under Legal Metrology Rule 6 (engine: ${model}).`,
+        metadata: {
+          modelUsed: model,
+          commodityName: declarations.commodityName?.value,
+        },
+      });
+    } catch (eventErr) {
+      console.warn("Non-blocking activity event recording error:", eventErr);
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -76,6 +96,27 @@ export async function POST(
     );
   } catch (err) {
     console.error("Server extraction route error:", err);
+
+    try {
+      const { id: inspectionId } = await context.params;
+      await recordActivityEvent({
+        action: "EXTRACTION_FAILED",
+        actionLabel: "Declaration Extraction Failed",
+        inspectionId,
+        category: "PIPELINE",
+        details: `Declaration extraction failed: ${err instanceof Error ? err.message : "Unknown error"}.`,
+        notification: {
+          targetUserId: "all",
+          type: "WARNING",
+          title: "Declaration Extraction Issue",
+          message: `Declarations could not be automatically structured for inspection ${inspectionId.slice(0, 8).toUpperCase()}. Manual review required.`,
+          actionUrl: `/inspections/${inspectionId}/review`,
+        },
+      });
+    } catch (eventErr) {
+      console.warn("Non-blocking activity event recording error:", eventErr);
+    }
+
     return NextResponse.json(
       {
         success: false,

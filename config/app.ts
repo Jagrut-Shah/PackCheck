@@ -39,7 +39,6 @@ export const MAIN_NAVIGATION: NavItem[] = [
     name: "Inspections",
     href: "/inspections",
     iconName: "ClipboardCheck",
-    badge: "Active",
     group: "INSPECTION",
   },
   {
@@ -70,12 +69,6 @@ export const MAIN_NAVIGATION: NavItem[] = [
     name: "Officer Profile",
     href: "/profile",
     iconName: "User",
-    group: "MANAGEMENT",
-  },
-  {
-    name: "System Settings",
-    href: "/settings",
-    iconName: "Settings",
     group: "MANAGEMENT",
   },
 ];

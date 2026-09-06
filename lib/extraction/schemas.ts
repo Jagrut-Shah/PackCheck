@@ -21,45 +21,45 @@ export const zodMRPSchema = z.object({
 });
 
 export const zodDateSchema = z.object({
-  month: z.number().int().min(0).max(12).optional(),
-  year: z.number().int().min(0).optional(),
-  formattedText: z.string(),
-  declarationType: z.enum(["MANUFACTURE", "PACKING", "IMPORT", "BEST_BEFORE", "USE_BY"]),
+  month: z.number().int().min(0).max(12).nullish(),
+  year: z.number().int().min(0).nullish(),
+  formattedText: z.string().nullish(),
+  declarationType: z.enum(["MANUFACTURE", "PACKING", "IMPORT", "BEST_BEFORE", "USE_BY"]).nullish(),
 });
 
 export const zodManufacturerSchema = z.object({
-  name: z.string(),
-  address: z.string(),
-  pincode: z.string().optional(),
-  role: z.enum(["MANUFACTURER", "PACKER", "IMPORTER", "MANUFACTURED_AND_PACKED_BY"]),
-  rawText: z.string(),
+  name: z.string().nullish(),
+  address: z.string().nullish(),
+  pincode: z.string().nullish(),
+  role: z.enum(["MANUFACTURER", "PACKER", "IMPORTER", "MANUFACTURED_AND_PACKED_BY"]).nullish(),
+  rawText: z.string().nullish(),
 });
 
 export const zodConsumerCareSchema = z.object({
-  contactPersonOrDesignation: z.string().optional(),
-  address: z.string().optional(),
-  telephoneOrMobile: z.string().optional(),
-  email: z.string().optional(),
-  website: z.string().optional(),
-  rawText: z.string(),
+  contactPersonOrDesignation: z.string().nullish(),
+  address: z.string().nullish(),
+  telephoneOrMobile: z.string().nullish(),
+  email: z.string().nullish(),
+  website: z.string().nullish(),
+  rawText: z.string().nullish(),
 });
 
 export const zodUnitSalePriceSchema = z.object({
-  amountInRupees: z.number().nonnegative(),
-  unit: z.string(),
-  rawText: z.string(),
-  isDeclared: z.boolean(),
+  amountInRupees: z.number().nonnegative().nullish(),
+  unit: z.string().nullish(),
+  rawText: z.string().nullish(),
+  isDeclared: z.boolean().nullish(),
 });
 
 export const zodPartialDeclarationsSchema = z.object({
-  commodityName: z.string().optional(),
-  manufacturerOrPacker: zodManufacturerSchema.partial().optional(),
-  netQuantity: zodNetQuantitySchema.partial().optional(),
-  manufacturingOrPackingDate: zodDateSchema.partial().optional(),
-  mrp: zodMRPSchema.partial().optional(),
-  consumerCare: zodConsumerCareSchema.partial().optional(),
-  countryOfOrigin: z.string().optional(),
-  unitSalePrice: zodUnitSalePriceSchema.partial().optional(),
+  commodityName: z.string().nullable().optional(),
+  manufacturerOrPacker: zodManufacturerSchema.partial().nullable().optional(),
+  netQuantity: zodNetQuantitySchema.partial().nullable().optional(),
+  manufacturingOrPackingDate: zodDateSchema.partial().nullable().optional(),
+  mrp: zodMRPSchema.partial().nullable().optional(),
+  consumerCare: zodConsumerCareSchema.partial().nullable().optional(),
+  countryOfOrigin: z.string().nullable().optional(),
+  unitSalePrice: zodUnitSalePriceSchema.partial().nullable().optional(),
 });
 
 export type ZodPartialDeclarations = z.infer<typeof zodPartialDeclarationsSchema>;

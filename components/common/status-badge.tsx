@@ -27,23 +27,41 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
       POTENTIAL_NON_COMPLIANCE: "fail",
       MANUAL_REVIEW: "review",
     };
+    const config = RESULT_CONFIG[result as OverallResult];
+    if (!config) {
+      return (
+        <Badge variant="neutral" className={className}>
+          {result || "Unknown"}
+        </Badge>
+      );
+    }
     return (
-      <Badge variant={variantMap[result]} className={className}>
-        {RESULT_CONFIG[result].label}
+      <Badge variant={variantMap[result as OverallResult] || "neutral"} className={className}>
+        {config.label}
       </Badge>
     );
   }
 
-  if (status) {
+  if (status !== undefined && status !== null) {
     const variantMap: Record<InspectionStatus, BadgeVariant> = {
       COMPLETED: "pass",
       MANUAL_REVIEW: "review",
       PROCESSING: "info",
+      PENDING: "info",
       DRAFT: "draft",
+      FAILED: "fail",
     };
+    const config = STATUS_CONFIG[status as InspectionStatus];
+    if (!config) {
+      return (
+        <Badge variant="neutral" className={className}>
+          {status || "Unknown"}
+        </Badge>
+      );
+    }
     return (
-      <Badge variant={variantMap[status]} className={className}>
-        {STATUS_CONFIG[status].label}
+      <Badge variant={variantMap[status as InspectionStatus] || "neutral"} className={className}>
+        {config.label}
       </Badge>
     );
   }
@@ -54,9 +72,17 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
       RETAKE_REQUIRED: "fail",
       PENDING: "info",
     };
+    const config = QUALITY_CONFIG[quality as ImageQualityStatus];
+    if (!config) {
+      return (
+        <Badge variant="neutral" className={className}>
+          {quality || "Unknown"}
+        </Badge>
+      );
+    }
     return (
-      <Badge variant={variantMap[quality]} className={className}>
-        {QUALITY_CONFIG[quality].label}
+      <Badge variant={variantMap[quality as ImageQualityStatus] || "neutral"} className={className}>
+        {config.label}
       </Badge>
     );
   }

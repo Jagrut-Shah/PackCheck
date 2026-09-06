@@ -1,82 +1,46 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
-import { ApiResponse } from '@/lib/types/common'
+import { NextRequest, NextResponse } from "next/server";
+import { ApiResponse } from "@/lib/types/common";
+import { markAuthoritativeNotificationRead } from "@/lib/events/activity-event";
 
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
   try {
-    const searchParams = request.nextUrl.searchParams
-    const inspectionId = searchParams.get('id') || searchParams.get('inspection_id')
-    const userId = searchParams.get('user_id')
+    const searchParams = request.nextUrl.searchParams;
+    const notificationOrInspectionId = searchParams.get("id") || searchParams.get("inspection_id");
+    const userId = searchParams.get("user_id") || undefined;
 
-    console.log('Marking notification as read:', { inspectionId, userId })
-
-    if (!userId) {
+    if (!notificationOrInspectionId) {
       return NextResponse.json(
         {
           success: false,
           error: {
-            code: 'AUTH_REQUIRED',
-            message: 'User ID required'
-          }
-        } as ApiResponse<null>,
-        { status: 401 }
-      )
-    }
-
-    if (!inspectionId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Inspection ID required'
-          }
+            code: "VALIDATION_ERROR",
+            message: "Notification or inspection ID required",
+          },
         } as ApiResponse<null>,
         { status: 400 }
-      )
+      );
     }
 
-    // Mark inspection as viewed
-    const { error: updateError } = await supabase
-      .from('inspections')
-      .update({
-        viewed_at: new Date().toISOString()
-      })
-      .eq('id', inspectionId)
-      .eq('inspector_id', userId)
-
-    if (updateError) {
-      console.error('Update error:', updateError)
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'DB_UPDATE_FAILED',
-            message: 'Failed to mark notification as read'
-          }
-        } as ApiResponse<null>,
-        { status: 500 }
-      )
-    }
+    await markAuthoritativeNotificationRead(notificationOrInspectionId, userId);
 
     return NextResponse.json(
       {
         success: true,
-        data: { message: 'Notification marked as read' }
+        data: { message: "Notification marked as read" },
       } as ApiResponse<any>,
       { status: 200 }
-    )
+    );
   } catch (err) {
-    console.error('Error:', err)
+    console.error("PATCH /api/notifications/read error:", err);
     return NextResponse.json(
       {
         success: false,
         error: {
-          code: 'SERVER_ERROR',
-          message: 'Internal server error'
-        }
+          code: "SERVER_ERROR",
+          message: "Internal server error",
+        },
       } as ApiResponse<null>,
       { status: 500 }
-    )
+    );
   }
 }
