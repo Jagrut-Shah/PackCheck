@@ -43,6 +43,11 @@ export default function EvidencePage({ params }: EvidencePageProps) {
   // Use real ocrResults when OCR service is integrated.
   // For now, fall back to mock OCR overlays matched by product name.
   // NOTE: The IMAGE shown in the viewport is the real Supabase Storage photo.
+  const isLegacyMock =
+    inspection.id.startsWith("ins_") ||
+    inspection.id.startsWith("INSP-") ||
+    inspection.id === "insp_amul_ghee";
+
   const productHint = (
     inspection.product ||
     inspection.commodity?.commodityName ||
@@ -57,7 +62,9 @@ export default function EvidencePage({ params }: EvidencePageProps) {
   const ocrResults =
     inspection.ocrResults && inspection.ocrResults.length > 0
       ? inspection.ocrResults
-      : [fallbackOcr];
+      : isLegacyMock
+      ? [fallbackOcr]
+      : [];
 
   return (
     <div className="flex flex-col gap-6 max-w-6xl mx-auto">

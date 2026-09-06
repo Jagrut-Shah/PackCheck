@@ -47,6 +47,7 @@ export interface ParsedRawDeclarations {
 export function parseCommodityName(rawText: string, contextProductName?: string): ExtractedField<string> {
   const lines = rawText.split("\n").map((l) => l.trim()).filter(Boolean);
 
+  // 1. Explicit statutory declaration label: "Commodity Name: Potato Chips"
   const labelRegex = /(?:commodity(?:\s*name)?|product(?:\s*name)?|item(?:\s*name)?)[:\s]+(.+)/i;
   for (const line of lines) {
     const match = line.match(labelRegex);
@@ -63,26 +64,45 @@ export function parseCommodityName(rawText: string, contextProductName?: string)
     }
   }
 
-  const skipKeywords = /(?:mfd|mfg|manufactured|pkd|packed|mrp|m\.r\.p|net\s*wt|net\s*qty|batch|exp|call|for\s*feedback|consumer|usp)/i;
-  if (lines.length > 0 && !skipKeywords.test(lines[0])) {
-    const titleCandidate = lines[0];
+  // 2. If user already provided a specific commodity name during inspection creation, prioritize that!
+  if (
+    contextProductName &&
+    contextProductName.trim() &&
+    !["general", "packaged commodity"].includes(contextProductName.trim().toLowerCase())
+  ) {
     return {
       field: "commodityName",
-      value: titleCandidate,
-      rawValue: titleCandidate,
-      confidence: 0.9,
+      value: contextProductName.trim(),
+      rawValue: contextProductName.trim(),
+      confidence: 0.92,
       confidenceLevel: CONFIDENCE_LEVEL.HIGH,
-      sourceType: "OCR_TEXT",
+      sourceType: "USER_INPUT",
     };
+  }
+
+  // 3. Reject ingredients, seasonings, nutritional, or technical lines from being treated as commodity names
+  const skipKeywords = /(?:mfd|mfg|manufactured|pkd|packed|mrp|m\.r\.p|net\s*wt|net\s*qty|batch|exp|call|for\s*feedback|consumer|usp|seasoning|ingredient|condiment|condment|flavour|fevour|flavor|sugar|salt|maltodetrin|maltodextrin|allergen|nutrition|serv|portion|energy|protein|fat|sodium|approximate|licence|license|fssai)/i;
+
+  for (const line of lines) {
+    if (!skipKeywords.test(line) && line.length >= 3 && line.length <= 60 && !/^[0-9.,%/*#\-+ ]+$/.test(line)) {
+      return {
+        field: "commodityName",
+        value: line,
+        rawValue: line,
+        confidence: 0.75,
+        confidenceLevel: CONFIDENCE_LEVEL.MEDIUM,
+        sourceType: "OCR_TEXT",
+      };
+    }
   }
 
   return {
     field: "commodityName",
     value: contextProductName || "",
     rawValue: "",
-    confidence: 0,
-    confidenceLevel: CONFIDENCE_LEVEL.LOW,
-    sourceType: "OCR_TEXT",
+    confidence: contextProductName ? 0.8 : 0,
+    confidenceLevel: contextProductName ? CONFIDENCE_LEVEL.MEDIUM : CONFIDENCE_LEVEL.LOW,
+    sourceType: contextProductName ? "USER_INPUT" : "OCR_TEXT",
   };
 }
 
@@ -162,10 +182,45 @@ export function parseManufacturerOrPacker(rawText: string): ExtractedField<Manuf
 export function parseNetQuantity(rawText: string): ExtractedField<NetQuantityDeclaration> {
   const lines = rawText.split("\n");
 
-  const regex = /(?:net\s*(?:qty|quantity|wt|weight)?[:\s]*)?(\d+(?:\.\d+)?)\s*(g|kg|ml|l|m|cm|mm|sq_m|sq_cm|pieces|units|n)\b/i;
+  // Pass 1: Explicit "NET QTY / NET WT / NET WEIGHT" declaration lines
+  const explicitNetRegex = /(?:net\s*(?:qty|quantity|wt|weight)?[:\s]*)([0-9POB]+(?:\.[0-9]+)?)\s*(g|kg|ml|l|m|cm|mm|sq_m|sq_cm|pieces|units|n)\b/i;
 
   for (const line of lines) {
-    const match = line.match(regex);
+    if (/net\s*(?:qty|quantity|wt|weight)/i.test(line)) {
+      const match = line.match(explicitNetRegex);
+      if (match) {
+        // Fix common OCR digit misreads in numbers (e.g. 'P' -> '8', 'O' -> '0', 'B' -> '8')
+        const normalizedDigits = match[1].replace(/P/gi, "8").replace(/O/gi, "0").replace(/B/gi, "8");
+        const declaredQuantity = parseFloat(normalizedDigits) || 0;
+        const rawUnit = match[2];
+        const unitLower = rawUnit.toLowerCase();
+        const canonicalUnit = unitLower === "l" ? "L" : unitLower === "n" ? "N" : rawUnit;
+        const isStandardUnit = STANDARD_UNITS.has(unitLower);
+
+        return {
+          field: "netQuantity",
+          value: {
+            declaredQuantity,
+            unit: canonicalUnit,
+            isStandardUnit,
+            rawText: line.trim(),
+          },
+          rawValue: line.trim(),
+          confidence: 0.95,
+          confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+          sourceType: "OCR_TEXT",
+        };
+      }
+    }
+  }
+
+  // Pass 2: General quantity lines (exclude nutrition, serving size, and percentage table lines)
+  const generalRegex = /(\d+(?:\.\d+)?)\s*(g|kg|ml|l|m|cm|mm|sq_m|sq_cm|pieces|units|n)\b/i;
+  const skipNutrition = /(?:serve|serving|portion|per\s*100|fat|sugar|protein|sodium|energy|kcal|carb)/i;
+
+  for (const line of lines) {
+    if (skipNutrition.test(line)) continue;
+    const match = line.match(generalRegex);
     if (match) {
       const declaredQuantity = parseFloat(match[1]);
       const rawUnit = match[2];
@@ -182,8 +237,8 @@ export function parseNetQuantity(rawText: string): ExtractedField<NetQuantityDec
           rawText: line.trim(),
         },
         rawValue: line.trim(),
-        confidence: 0.95,
-        confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+        confidence: 0.85,
+        confidenceLevel: CONFIDENCE_LEVEL.MEDIUM,
         sourceType: "OCR_TEXT",
       };
     }
@@ -216,7 +271,7 @@ export function parseMRP(rawText: string): ExtractedField<MRPDeclaration> {
   for (const line of lines) {
     if (mrpLineRegex.test(line)) {
       const match = line.match(priceRegex);
-      if (match) {
+      if (match && parseFloat(match[2]) > 0) {
         let symbol = match[1] || "₹";
         if (symbol.toLowerCase().startsWith("rs")) symbol = "Rs";
         if (symbol.toLowerCase() === "inr") symbol = "INR";
@@ -242,9 +297,12 @@ export function parseMRP(rawText: string): ExtractedField<MRPDeclaration> {
   }
 
   const genericPriceRegex = /(?:[₹]|rs\.?\s*|inr\s*)(\d+(?:\.\d+)?)(?:\/-)?/i;
+  const skipNutritionOrDates = /(?:serving|serve|per\s*100|kcal|energy|fat|carb|protein|sodium|sugar|mfd|exp|pkd|\b(?:19|20)\d{2}\b)/i;
+
   for (const line of lines) {
+    if (skipNutritionOrDates.test(line)) continue;
     const match = line.match(genericPriceRegex);
-    if (match) {
+    if (match && parseFloat(match[1]) > 0) {
       const amountInRupees = parseFloat(match[1]);
       let symbol = "₹";
       if (/rs/i.test(line)) symbol = "Rs";

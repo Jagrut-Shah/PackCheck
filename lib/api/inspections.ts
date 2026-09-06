@@ -474,27 +474,27 @@ export function deserializeBackendFieldsToDeclarations(
     const item = fieldMap[name];
     const corr = correctionMap[name];
     const value = corr ? corr.corrected : (item ? item.value : fallback);
-    const confidence = item ? item.confidence : 0.95;
+    const confidence = item ? item.confidence : (value ? 0.9 : 0);
     const isOverridden = Boolean(corr);
     const originalValue = corr ? corr.original : (item ? item.value : fallback);
     return { value, confidence, isOverridden, originalValue };
   };
 
-  const rawProd = getField("productName", productType || "Packaged Commodity");
+  const rawProd = getField("productName", productType || "");
   const prodName = (productType && productType !== "General" && rawProd.value.toLowerCase().includes("ghee") && !productType.toLowerCase().includes("ghee"))
     ? { ...rawProd, value: productType, originalValue: productType }
     : rawProd;
-  const mfr = getField("manufacturer", "Manufacturer");
-  const addr = getField("address", "Registered Address");
-  const netQty = getField("netQuantity", "1 N");
-  const mrp = getField("mrp", "MRP ₹0.00");
-  const mrpTax = getField("mrpIncludesTaxes", "Present ('INCL. OF ALL TAXES')");
-  const mfgDate = getField("manufacturingDate", "01/2026");
-  const expDate = getField("bestBefore", "Best before 12 months");
-  const care = getField("consumerCare", "Contact Consumer Care");
+  const mfr = getField("manufacturer", "");
+  const addr = getField("address", "");
+  const netQty = getField("netQuantity", "");
+  const mrp = getField("mrp", "");
+  const mrpTax = getField("mrpIncludesTaxes", "");
+  const mfgDate = getField("manufacturingDate", "");
+  const expDate = getField("bestBefore", "");
+  const care = getField("consumerCare", "");
   const country = getField("countryOfOrigin", "India");
-  const usp = getField("unitSalePrice", "USP ₹0.00");
-  const dim = getField("dimensions", "Standard Package");
+  const usp = getField("unitSalePrice", "");
+  const dim = getField("dimensions", "");
 
   return {
     commodityName: {
@@ -502,7 +502,7 @@ export function deserializeBackendFieldsToDeclarations(
       value: prodName.value,
       rawValue: prodName.originalValue,
       confidence: prodName.confidence,
-      confidenceLevel: prodName.confidence > 0.9 ? "HIGH" : "MEDIUM",
+      confidenceLevel: prodName.confidence > 0.8 ? "HIGH" : prodName.confidence > 0.4 ? "MEDIUM" : "LOW",
       isInspectorOverridden: prodName.isOverridden,
       originalExtractedValue: prodName.originalValue,
     },
@@ -512,10 +512,10 @@ export function deserializeBackendFieldsToDeclarations(
         name: mfr.value,
         address: addr.value,
         role: "MANUFACTURER",
-        rawText: `${mfr.value}, ${addr.value}`,
+        rawText: mfr.value && addr.value ? `${mfr.value}, ${addr.value}` : mfr.value || addr.value || "",
       },
       confidence: mfr.confidence,
-      confidenceLevel: mfr.confidence > 0.9 ? "HIGH" : "MEDIUM",
+      confidenceLevel: mfr.confidence > 0.8 ? "HIGH" : mfr.confidence > 0.4 ? "MEDIUM" : "LOW",
       isInspectorOverridden: mfr.isOverridden,
       originalExtractedValue: {
         name: mfr.originalValue,
@@ -533,7 +533,7 @@ export function deserializeBackendFieldsToDeclarations(
         rawText: netQty.value,
       },
       confidence: netQty.confidence,
-      confidenceLevel: netQty.confidence > 0.9 ? "HIGH" : "MEDIUM",
+      confidenceLevel: netQty.confidence > 0.8 ? "HIGH" : netQty.confidence > 0.4 ? "MEDIUM" : "LOW",
       isInspectorOverridden: netQty.isOverridden,
       originalExtractedValue: {
         declaredQuantity: 1,
@@ -546,16 +546,16 @@ export function deserializeBackendFieldsToDeclarations(
       field: "mrp",
       value: {
         amountInRupees: 0,
-        isInclusiveOfAllTaxes: !mrpTax.value.toUpperCase().includes("MISSING"),
+        isInclusiveOfAllTaxes: mrpTax.value ? !mrpTax.value.toUpperCase().includes("MISSING") : false,
         rawText: mrp.value,
         currencySymbol: "₹",
       },
       confidence: mrp.confidence,
-      confidenceLevel: mrp.confidence > 0.9 ? "HIGH" : "MEDIUM",
+      confidenceLevel: mrp.confidence > 0.8 ? "HIGH" : mrp.confidence > 0.4 ? "MEDIUM" : "LOW",
       isInspectorOverridden: mrp.isOverridden,
       originalExtractedValue: {
         amountInRupees: 0,
-        isInclusiveOfAllTaxes: !mrpTax.originalValue.toUpperCase().includes("MISSING"),
+        isInclusiveOfAllTaxes: mrpTax.originalValue ? !mrpTax.originalValue.toUpperCase().includes("MISSING") : false,
         rawText: mrp.originalValue,
         currencySymbol: "₹",
       },
@@ -567,7 +567,7 @@ export function deserializeBackendFieldsToDeclarations(
         declarationType: "MANUFACTURE",
       },
       confidence: mfgDate.confidence,
-      confidenceLevel: mfgDate.confidence > 0.9 ? "HIGH" : "MEDIUM",
+      confidenceLevel: mfgDate.confidence > 0.8 ? "HIGH" : mfgDate.confidence > 0.4 ? "MEDIUM" : "LOW",
       isInspectorOverridden: mfgDate.isOverridden,
     },
     expiryOrBestBeforeDate: {
@@ -577,7 +577,7 @@ export function deserializeBackendFieldsToDeclarations(
         declarationType: "BEST_BEFORE",
       },
       confidence: expDate.confidence,
-      confidenceLevel: expDate.confidence > 0.9 ? "HIGH" : "MEDIUM",
+      confidenceLevel: expDate.confidence > 0.8 ? "HIGH" : expDate.confidence > 0.4 ? "MEDIUM" : "LOW",
     },
     consumerCare: {
       field: "consumerCare",
@@ -585,14 +585,14 @@ export function deserializeBackendFieldsToDeclarations(
         rawText: care.value,
       },
       confidence: care.confidence,
-      confidenceLevel: care.confidence > 0.9 ? "HIGH" : "MEDIUM",
+      confidenceLevel: care.confidence > 0.8 ? "HIGH" : care.confidence > 0.4 ? "MEDIUM" : "LOW",
       isInspectorOverridden: care.isOverridden,
     },
     countryOfOrigin: {
       field: "countryOfOrigin",
       value: country.value,
       confidence: country.confidence,
-      confidenceLevel: country.confidence > 0.9 ? "HIGH" : "MEDIUM",
+      confidenceLevel: country.confidence > 0.8 ? "HIGH" : country.confidence > 0.4 ? "MEDIUM" : "LOW",
     },
     unitSalePrice: {
       field: "unitSalePrice",
@@ -600,16 +600,16 @@ export function deserializeBackendFieldsToDeclarations(
         amountInRupees: 0,
         unit: "unit",
         rawText: usp.value,
-        isDeclared: true,
+        isDeclared: Boolean(usp.value),
       },
       confidence: usp.confidence,
-      confidenceLevel: usp.confidence > 0.9 ? "HIGH" : "MEDIUM",
+      confidenceLevel: usp.confidence > 0.8 ? "HIGH" : usp.confidence > 0.4 ? "MEDIUM" : "LOW",
     },
     sizesOrDimensions: {
       field: "dimensions",
       value: dim.value,
       confidence: dim.confidence,
-      confidenceLevel: dim.confidence > 0.9 ? "HIGH" : "MEDIUM",
+      confidenceLevel: dim.confidence > 0.8 ? "HIGH" : dim.confidence > 0.4 ? "MEDIUM" : "LOW",
     },
     extractedAt: fields[0]?.created_at || new Date().toISOString(),
     modelUsed: fields[0]?.source || "LLM",
