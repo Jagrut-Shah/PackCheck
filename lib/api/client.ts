@@ -79,20 +79,80 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
     );
   }
 
-  let json: ApiResponse<T>;
-  try {
-    json = await response.json();
-  } catch {
+  let json: ApiResponse<T> | null = null;
+  let rawBodyText = "";
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    try {
+      json = (await response.json()) as ApiResponse<T>;
+    } catch {
+      json = null;
+    }
+  } else {
+    try {
+      rawBodyText = await response.text();
+      try {
+        json = JSON.parse(rawBodyText) as ApiResponse<T>;
+      } catch {
+        json = null;
+      }
+    } catch {
+      json = null;
+    }
+  }
+
+  // Gracefully handle non-JSON server responses (e.g. 504 Gateway Timeout HTML/plain-text from Vercel or upstream proxies)
+  if (!json) {
+    if (!rawBodyText) {
+      try {
+        rawBodyText = await response.text();
+      } catch {
+        rawBodyText = "";
+      }
+    }
+
+    let userFriendlyMessage: string;
+    let errorCode: string;
+
+    if (response.status === 504) {
+      errorCode = "GATEWAY_TIMEOUT";
+      userFriendlyMessage =
+        "Gateway Timeout (HTTP 504): The OCR or verification processing timed out on the server. The upstream OCR service took longer than the execution limit.";
+    } else if (response.status === 502) {
+      errorCode = "BAD_GATEWAY";
+      userFriendlyMessage =
+        "Bad Gateway (HTTP 502): The upstream OCR microservice is unreachable or returned an invalid response.";
+    } else if (response.status === 503) {
+      errorCode = "SERVICE_UNAVAILABLE";
+      userFriendlyMessage =
+        "Service Unavailable (HTTP 503): The verification service is temporarily overloaded or unavailable.";
+    } else {
+      errorCode = "NON_JSON_RESPONSE";
+      const cleanSnippet = rawBodyText
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 160);
+      userFriendlyMessage = cleanSnippet
+        ? `Server returned non-JSON error (HTTP ${response.status}): ${cleanSnippet}`
+        : `Server returned non-JSON response (HTTP ${response.status}).`;
+    }
+
     throw new ApiClientError(
-      `Invalid JSON response from server (HTTP ${response.status})`,
-      "INVALID_RESPONSE",
-      response.status
+      userFriendlyMessage,
+      errorCode,
+      response.status,
+      { rawBodyPreview: rawBodyText.slice(0, 300) }
     );
   }
 
   if (!response.ok || !json.success) {
     const errorPayload: ApiErrorPayload | undefined = json.error;
-    const message = errorPayload?.message || json.message || `Request failed with status ${response.status}`;
+    const message =
+      errorPayload?.message ||
+      json.message ||
+      `Request failed with status ${response.status}`;
     const code = errorPayload?.code || "REQUEST_FAILED";
     const details = errorPayload?.details;
 

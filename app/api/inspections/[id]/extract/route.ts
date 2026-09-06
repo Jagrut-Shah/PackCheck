@@ -12,6 +12,9 @@ interface ExtractDeclarationsRequestBody {
   context?: ExtractionContext;
 }
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 /**
  * Server-side extraction route for Member 3 Legal Metrology declarations.
  * Executes OCR rawText parsing and server-only Gemini AI enrichment without exposing
@@ -137,16 +140,25 @@ export async function POST(
       console.warn("Non-blocking activity event recording error:", eventErr);
     }
 
+    const isTimeout =
+      err instanceof Error &&
+      (err.message.includes("timeout") || err.message.includes("Timeout") || err.name === "AbortError");
+    const errorCode = isTimeout ? "DOWNSTREAM_GEMINI_TIMEOUT" : "EXTRACTION_FAILED";
+    const errorStatus = isTimeout ? 504 : 500;
+    const errorMessage = isTimeout
+      ? "Downstream Gemini API timeout during declaration extraction."
+      : "Internal server error during declaration extraction";
+
     return NextResponse.json(
       {
         success: false,
         error: {
-          code: "SERVER_ERROR",
-          message: "Internal server error during declaration extraction",
+          code: errorCode,
+          message: errorMessage,
           details: err instanceof Error ? err.message : "Unknown error",
         },
       } as ApiResponse<null>,
-      { status: 500 }
+      { status: errorStatus }
     );
   }
 }

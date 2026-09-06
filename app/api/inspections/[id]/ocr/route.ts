@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase, supabaseAdmin } from "@/lib/supabase";
-import { processImageOCR } from "@/lib/ocr";
+import { processImageOCR, OcrServiceError } from "@/lib/ocr";
 import { OCRResult } from "@/lib/types/ocr";
 import { ApiResponse } from "@/lib/types/common";
 import { recordActivityEvent } from "@/lib/events/activity-event";
 import { requireAuth, verifyInspectionOwnership } from "@/lib/auth/server";
 
+export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
@@ -17,6 +18,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
+  const routeStartTime = Date.now();
   const db = supabaseAdmin || supabase;
   let userId: string | undefined;
   try {
@@ -210,20 +212,39 @@ export async function POST(
       );
     }
 
-    // 4. Call PaddleOCR FastAPI microservice
+    // 4. Call PaddleOCR FastAPI microservice with function deadline guard
+    // Race against 58s deadline to ensure Next.js returns a clean JSON error before Vercel/proxies send raw 504 HTML
+    const routeDeadlineMs = 58000;
+    let timeoutHandle: NodeJS.Timeout | null = null;
+    const deadlinePromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        reject(
+          new OcrServiceError(
+            "Vercel function timeout: OCR processing pipeline reached the 58-second execution deadline.",
+            "VERCEL_FUNCTION_TIMEOUT",
+            504,
+            { routeDeadlineMs, stage: "PaddleOCR Processing" }
+          )
+        );
+      }, routeDeadlineMs);
+    });
+
     let ocrResult: OCRResult;
     try {
-      ocrResult = await processImageOCR({
-        inspectionId,
-        imageId: targetImageId,
-        imageLocation: targetImageLocation,
-        options: body.options || {
-          deskew: true,
-          denoise: true,
-          contrastEnhancement: true,
-          languages: ["en"],
-        },
-      });
+      ocrResult = await Promise.race([
+        processImageOCR({
+          inspectionId,
+          imageId: targetImageId,
+          imageLocation: targetImageLocation,
+          options: body.options || {
+            deskew: true,
+            denoise: true,
+            contrastEnhancement: true,
+            languages: ["en"],
+          },
+        }),
+        deadlinePromise,
+      ]);
     } catch (ocrErr: any) {
       const errMsg = ocrErr?.message || "";
       const isRetrievalFailure =
@@ -246,6 +267,8 @@ export async function POST(
         );
       }
       throw ocrErr;
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
     }
 
     // 5. Persist OCR result in Supabase
@@ -255,7 +278,7 @@ export async function POST(
           inspection_id: inspectionId,
           image_id: targetImageId.startsWith("img_") ? null : targetImageId,
           engine: ocrResult.engine || "PaddleOCR",
-          engine_version: ocrResult.engineVersion || "v2.7.3",
+          engineVersion: ocrResult.engineVersion || "v2.7.3",
           raw_text: ocrResult.rawText,
           overall_confidence: ocrResult.overallConfidence,
           detected_text_items: ocrResult.detectedTextItems,
@@ -298,6 +321,9 @@ export async function POST(
       console.warn("Non-blocking activity event recording error:", eventErr);
     }
 
+    const totalDurationMs = Date.now() - routeStartTime;
+    console.log(`[OCR_ROUTE_SUCCESS] Inspection ${inspectionId} OCR completed successfully in ${totalDurationMs}ms.`);
+
     return NextResponse.json(
       {
         success: true,
@@ -305,8 +331,64 @@ export async function POST(
       } as ApiResponse<OCRResult>,
       { status: 200 }
     );
-  } catch (err) {
-    console.error("OCR route processing error:", err);
+  } catch (err: any) {
+    const elapsedMs = Date.now() - routeStartTime;
+
+    // Distinguish and categorize all 7 failure modes
+    let errorCode = "OCR_PROCESSING_FAILED";
+    let errorStatus = 500;
+    let errorMessage = "Failed to execute OCR processing pipeline.";
+    let errorDetails: unknown = err instanceof Error ? err.message : "Unknown error";
+
+    if (err instanceof OcrServiceError) {
+      errorCode = err.code;
+      errorStatus = err.statusCode;
+      errorMessage = err.message;
+      errorDetails = err.details || err.message;
+    } else if (err instanceof Error) {
+      const msg = err.message || "";
+      if (msg.includes("ECONNREFUSED") || msg.includes("fetch failed")) {
+        errorCode = "FASTAPI_CONNECTION_FAILURE";
+        errorStatus = 503;
+        errorMessage = "FastAPI connection failure: Could not connect to PaddleOCR microservice. Ensure the microservice is running.";
+      } else if (msg.includes("PADDLEOCR_PROCESSING_TIMEOUT") || msg.includes("PaddleOCR processing timeout")) {
+        errorCode = "PADDLEOCR_PROCESSING_TIMEOUT";
+        errorStatus = 504;
+        errorMessage = "PaddleOCR processing timeout: OCR inference took longer than allowed.";
+      } else if (msg.includes("FASTAPI_TIMEOUT") || msg.includes("timeout") || msg.includes("504")) {
+        errorCode = "FASTAPI_TIMEOUT";
+        errorStatus = 504;
+        errorMessage = "FastAPI timeout: The OCR microservice timed out while processing.";
+      } else if (msg.includes("MALFORMED_OCR_RESPONSE") || msg.includes("JSON") || msg.includes("Unexpected token")) {
+        errorCode = "MALFORMED_OCR_RESPONSE";
+        errorStatus = 502;
+        errorMessage = "Malformed response: Upstream OCR service returned non-JSON data.";
+      } else if (msg.includes("GEMINI") || msg.includes("Gemini")) {
+        errorCode = "DOWNSTREAM_GEMINI_TIMEOUT";
+        errorStatus = 504;
+        errorMessage = "Downstream Gemini API timeout during extraction enrichment.";
+      } else if (msg.includes("VERCEL_FUNCTION_TIMEOUT")) {
+        errorCode = "VERCEL_FUNCTION_TIMEOUT";
+        errorStatus = 504;
+        errorMessage = "Vercel function timeout: OCR pipeline reached maximum execution limit.";
+      } else if (msg.includes("IMAGE_RETRIEVAL_FAILED") || msg.includes("ImageDownloadError")) {
+        errorCode = "IMAGE_RETRIEVAL_FAILED";
+        errorStatus = 502;
+        errorMessage = "Inspection image exists, but the OCR service could not retrieve it from storage.";
+      } else {
+        errorCode = "UNEXPECTED_SERVER_EXCEPTION";
+        errorStatus = 500;
+        errorMessage = `Internal server error during OCR processing: ${msg}`;
+      }
+    }
+
+    console.error(`[OCR_ROUTE_CATEGORIZED_ERROR] [${errorCode}] (HTTP ${errorStatus}, ${elapsedMs}ms):`, {
+      code: errorCode,
+      status: errorStatus,
+      message: errorMessage,
+      details: errorDetails,
+      elapsedMs,
+    });
 
     try {
       const { id: inspectionId } = await context.params;
@@ -315,12 +397,12 @@ export async function POST(
         actionLabel: "OCR Processing Failed",
         inspectionId,
         category: "PIPELINE",
-        details: `OCR processing failed: ${err instanceof Error ? err.message : "Unknown error"}.`,
+        details: `OCR processing failed (${errorCode}): ${errorMessage}`,
         notification: {
           targetUserId: userId || "officer",
           type: "CRITICAL",
           title: "OCR Processing Failed",
-          message: `OCR processing failed for inspection ${inspectionId.slice(0, 8).toUpperCase()}.`,
+          message: `OCR processing failed for inspection ${inspectionId.slice(0, 8).toUpperCase()}: ${errorMessage}`,
           actionUrl: `/inspections/${inspectionId}/processing`,
         },
       });
@@ -328,16 +410,17 @@ export async function POST(
       console.warn("Non-blocking activity event recording error:", eventErr);
     }
 
+    // Always return valid JSON ApiResponse
     return NextResponse.json(
       {
         success: false,
         error: {
-          code: "OCR_PROCESSING_FAILED",
-          message: "Failed to execute OCR processing pipeline",
-          details: err instanceof Error ? err.message : "Unknown error",
+          code: errorCode,
+          message: errorMessage,
+          details: errorDetails,
         },
       } as ApiResponse<null>,
-      { status: 500 }
+      { status: errorStatus }
     );
   }
 }

@@ -2,9 +2,24 @@
  * PackCheck AI - Real OCR Integration Client
  * Connects Next.js backend to Python FastAPI PaddleOCR microservice.
  * Enforces X-API-Key authentication and parses canonical OCRResult responses.
+ * Provides explicit timeout handling, connection failure detection, and structured error categorization.
  */
 
 import { OCRResult, OCRProcessingRequest } from "@/lib/types/ocr";
+
+export class OcrServiceError extends Error {
+  code: string;
+  statusCode: number;
+  details?: unknown;
+
+  constructor(message: string, code: string, statusCode: number = 500, details?: unknown) {
+    super(message);
+    this.name = "OcrServiceError";
+    this.code = code;
+    this.statusCode = statusCode;
+    this.details = details;
+  }
+}
 
 export async function processImageOCR(
   request: OCRProcessingRequest
@@ -13,8 +28,10 @@ export async function processImageOCR(
   const ocrApiKey = process.env.OCR_SERVICE_API_KEY;
 
   if (!ocrApiKey) {
-    throw new Error(
-      "OCR_SERVICE_API_KEY is not configured in environment. OCR service requires authentication."
+    throw new OcrServiceError(
+      "OCR_SERVICE_API_KEY is not configured in environment. OCR service requires authentication.",
+      "CONFIG_ERROR",
+      500
     );
   }
 
@@ -32,33 +49,157 @@ export async function processImageOCR(
     },
   };
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": ocrApiKey,
-    },
-    body: JSON.stringify(payload),
+  // Dedicated 54-second timeout controller (safely within the 60s maxDuration limit)
+  const controller = new AbortController();
+  const timeoutMs = 54000;
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  const startTime = Date.now();
+  console.log(`[OCR_CLIENT] Initiating request to FastAPI OCR microservice at ${endpoint}...`, {
+    inspectionId: request.inspectionId,
+    imageId: request.imageId,
+    timeoutMs,
   });
 
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": ocrApiKey,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (fetchErr: any) {
+    clearTimeout(timer);
+    const elapsedMs = Date.now() - startTime;
+
+    // Check for Abort / Timeout
+    if (fetchErr.name === "AbortError" || controller.signal.aborted) {
+      console.error(`[OCR_CLIENT_TIMEOUT] PaddleOCR inference exceeded ${timeoutMs}ms limit (${elapsedMs}ms elapsed).`);
+      throw new OcrServiceError(
+        `PaddleOCR processing timeout: OCR inference took longer than ${timeoutMs / 1000} seconds. The package image may be high resolution or CPU resources are constrained.`,
+        "PADDLEOCR_PROCESSING_TIMEOUT",
+        504,
+        { elapsedMs, timeoutMs, endpoint }
+      );
+    }
+
+    // Check for Connection Refusal / Offline Microservice
+    const isConnRefused =
+      fetchErr.cause?.code === "ECONNREFUSED" ||
+      fetchErr.message?.includes("ECONNREFUSED") ||
+      fetchErr.message?.includes("fetch failed") ||
+      fetchErr.message?.includes("connect ECONNREFUSED") ||
+      fetchErr.code === "ECONNREFUSED";
+
+    if (isConnRefused) {
+      console.error(`[OCR_CLIENT_CONNECTION_FAILURE] Cannot connect to FastAPI OCR microservice at ${ocrServiceUrl}. Is the service running?`, fetchErr);
+      throw new OcrServiceError(
+        `FastAPI connection failure: Could not connect to OCR microservice at ${ocrServiceUrl}. Verify that the FastAPI microservice is running.`,
+        "FASTAPI_CONNECTION_FAILURE",
+        503,
+        { ocrServiceUrl, originalError: fetchErr.message }
+      );
+    }
+
+    console.error(`[OCR_CLIENT_NETWORK_ERROR] Network failure communicating with FastAPI OCR:`, fetchErr);
+    throw new OcrServiceError(
+      `FastAPI network error: ${fetchErr.message || "Failed to communicate with OCR service."}`,
+      "FASTAPI_CONNECTION_FAILURE",
+      502,
+      { originalError: fetchErr.message }
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const elapsedMs = Date.now() - startTime;
+
+  // Handle upstream HTTP error codes
   if (!response.ok) {
     let errorDetail = "";
+    let parsedJson: any = null;
     try {
-      const errJson = await response.json();
-      errorDetail = errJson.detail || JSON.stringify(errJson);
+      const text = await response.text();
+      try {
+        parsedJson = JSON.parse(text);
+        errorDetail = parsedJson.detail || parsedJson.message || JSON.stringify(parsedJson);
+      } catch {
+        errorDetail = text.slice(0, 300);
+      }
     } catch {
-      errorDetail = await response.text();
+      errorDetail = response.statusText;
     }
-    throw new Error(
-      `OCR Service HTTP ${response.status} (${response.statusText}): ${errorDetail}`
+
+    console.error(`[OCR_CLIENT_HTTP_ERROR] FastAPI returned HTTP ${response.status}: ${errorDetail}`, {
+      status: response.status,
+      elapsedMs,
+    });
+
+    if (response.status === 504) {
+      throw new OcrServiceError(
+        `FastAPI timeout (HTTP 504): The OCR microservice timed out during inference: ${errorDetail}`,
+        "FASTAPI_TIMEOUT",
+        504,
+        { errorDetail, elapsedMs }
+      );
+    }
+
+    if (response.status === 502) {
+      throw new OcrServiceError(
+        `FastAPI bad gateway (HTTP 502): ${errorDetail}`,
+        "MALFORMED_OCR_RESPONSE",
+        502,
+        { errorDetail, elapsedMs }
+      );
+    }
+
+    throw new OcrServiceError(
+      `OCR Service HTTP ${response.status} (${response.statusText}): ${errorDetail}`,
+      response.status >= 500 ? "OCR_PROCESSING_FAILED" : "INVALID_REQUEST",
+      response.status,
+      { errorDetail, elapsedMs }
     );
   }
 
-  const data = (await response.json()) as OCRResult;
+  // Parse and validate JSON response
+  let rawBodyText = "";
+  let data: OCRResult;
+  try {
+    rawBodyText = await response.text();
+    data = JSON.parse(rawBodyText) as OCRResult;
+  } catch (parseErr: any) {
+    console.error(`[OCR_CLIENT_MALFORMED_JSON] FastAPI returned non-JSON 200 response:`, rawBodyText.slice(0, 200));
+    throw new OcrServiceError(
+      `Malformed FastAPI response: The OCR microservice returned an invalid response (not valid JSON). Preview: ${rawBodyText.slice(0, 100)}`,
+      "MALFORMED_OCR_RESPONSE",
+      502,
+      { rawBodyPreview: rawBodyText.slice(0, 300) }
+    );
+  }
 
+  console.log(`[OCR_CLIENT_SUCCESS] Received valid OCR results from FastAPI in ${elapsedMs}ms. Detected ${data.detectedTextItems?.length || 0} items.`, {
+    inspectionId: request.inspectionId,
+    overallConfidence: data.overallConfidence,
+    rawTextLength: data.rawText?.length || 0,
+  });
+
+  // Enforce schema completeness to ensure consumers always receive valid OCRResult
   return {
     ...data,
     id: data.id || `ocr_${request.imageId}`,
-    blocks: data.blocks || [],
+    inspectionId: data.inspectionId || request.inspectionId,
+    imageId: data.imageId || request.imageId,
+    engine: data.engine || "PaddleOCR",
+    engineVersion: data.engineVersion || "v2.7.3",
+    rawText: data.rawText || "",
+    overallConfidence: typeof data.overallConfidence === "number" ? data.overallConfidence : 0.9,
+    detectedTextItems: Array.isArray(data.detectedTextItems) ? data.detectedTextItems : [],
+    blocks: Array.isArray(data.blocks) ? data.blocks : [],
   };
 }

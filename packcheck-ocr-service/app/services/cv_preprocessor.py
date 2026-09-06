@@ -38,7 +38,7 @@ class CVPreprocessorService:
         max_deskew_angle: float = settings.MAX_DESKEW_ANGLE_DEG,
         clahe_clip_limit: float = 2.0,
         clahe_tile_grid_size: Tuple[int, int] = (8, 8),
-        denoise_d: int = 9,
+        denoise_d: int = 5,
         denoise_sigma_color: float = 75.0,
         denoise_sigma_space: float = 75.0,
     ):
