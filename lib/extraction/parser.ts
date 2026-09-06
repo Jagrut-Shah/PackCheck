@@ -108,57 +108,92 @@ export function parseCommodityName(rawText: string, contextProductName?: string)
 
 /**
  * Parses Manufacturer / Packer Identity & Address from OCR raw text.
+ * Handles both single-line ("MFD BY: Company Name, Address") and
+ * multi-line ("MANUFACTURED BY:\nCompany Name\nAddress, PIN") formats.
  */
 export function parseManufacturerOrPacker(rawText: string): ExtractedField<ManufacturerPackerDeclaration> {
   const lines = rawText.split("\n").map((l) => l.trim()).filter(Boolean);
 
-  const mfrRegex = /(?:mfd|mfg|manufactured|pkd|packed|importer|marketed)(?:\s*&\s*(?:pkd|packed))?\s*by[:\s]*(.+)/i;
+  // Pattern 1: header + value on SAME line — "Mfd by: Company Name, Address"
+  const sameLineRegex = /(?:mfd|mfg|manufactured|pkd|packed|importer|marketed)(?:\s*&\s*(?:pkd|packed))?\s*by[:\s]+(.+)/i;
 
-  for (const line of lines) {
-    const match = line.match(mfrRegex);
-    if (match) {
-      const fullText = match[1].trim();
-      const rawTextLine = line;
+  // Pattern 2: header on its OWN line, value on NEXT lines (very common on Indian packages)
+  // Matches "MANUFACTURED BY:", "PACKED BY:", "MFD. BY:", etc. that are the ENTIRE line content
+  const headerOnlyRegex = /^(?:mfd\.?|mfg\.?|manufactured|pkd\.?|packed|importer|marketed)(?:\s*[&+]\s*(?:pkd\.?|packed))?\s*by\s*:?\s*$/i;
 
-      let role: ManufacturerPackerDeclaration["role"] = "MANUFACTURER";
-      if (/mfd.*pkd|manufactured.*packed/i.test(line)) {
-        role = "MANUFACTURED_AND_PACKED_BY";
-      } else if (/pkd|packed/i.test(line)) {
-        role = "PACKER";
-      } else if (/importer/i.test(line)) {
-        role = "IMPORTER";
-      }
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
 
-      const pinMatch = line.match(/\b(\d{6})\b/);
-      const pincode = pinMatch ? pinMatch[1] : undefined;
+    // Check if this line is a standalone header (like "MANUFACTURED BY:")
+    const isHeaderOnly = headerOnlyRegex.test(line);
+    let fullText = "";
+    let rawTextLine = line;
+    let role: ManufacturerPackerDeclaration["role"] = "MANUFACTURER";
 
-      let name = fullText;
-      let address = fullText;
-      const parts = fullText.split(",");
-
-      if (parts.length > 1) {
-        name = parts[0].trim();
-        address = parts.slice(1).join(",").trim();
-      } else {
-        name = fullText;
-        address = fullText;
-      }
-
-      return {
-        field: "manufacturerOrPacker",
-        value: {
-          name,
-          address,
-          pincode,
-          role,
-          rawText: rawTextLine,
-        },
-        rawValue: rawTextLine,
-        confidence: 0.92,
-        confidenceLevel: CONFIDENCE_LEVEL.HIGH,
-        sourceType: "OCR_TEXT",
-      };
+    if (/mfd.*pkd|manufactured.*packed/i.test(line)) {
+      role = "MANUFACTURED_AND_PACKED_BY";
+    } else if (/pkd|packed/i.test(line)) {
+      role = "PACKER";
+    } else if (/importer/i.test(line)) {
+      role = "IMPORTER";
     }
+
+    if (isHeaderOnly) {
+      // Grab the next 1-3 lines as the company name + address
+      const nextLines: string[] = [];
+      for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+        const nextLine = lines[j];
+        // Stop if we hit another field header (MRP, NET QTY, BATCH, FSSAI, COUNTRY, etc.)
+        if (/^(?:mrp|net\s*(?:qty|wt|weight)|batch|exp|best\s*before|country|fssai|consumer\s*care|ingredients?|mfg\s*date|best\s*by|use\s*by)/i.test(nextLine)) break;
+        nextLines.push(nextLine);
+      }
+      if (nextLines.length === 0) continue;
+      fullText = nextLines.join(", ");
+      rawTextLine = line + " " + nextLines.join("; ");
+    } else {
+      // Same-line format
+      const match = line.match(sameLineRegex);
+      if (!match) continue;
+      fullText = match[1].trim();
+    }
+
+    // Extract PIN code from the full text blob
+    const pinMatch = fullText.match(/\b(\d{6})\b/);
+    const pincode = pinMatch ? pinMatch[1] : undefined;
+
+    // Split into name + address: first comma-delimited segment is the company name
+    const parts = fullText.split(",");
+    let name = "";
+    let address = "";
+
+    if (parts.length > 1) {
+      name = parts[0].trim();
+      address = parts.slice(1).join(",").trim();
+    } else {
+      // No commas — treat first line as name, rest as address if multi-line
+      const subLines = fullText.split(";");
+      name = subLines[0].trim();
+      address = subLines.slice(1).join(", ").trim();
+      if (!address) address = name;
+    }
+
+    // Reject garbage extractions (single chars, numbers only)
+    if (!name || name.length < 3 || /^[\d\s]+$/.test(name)) continue;
+
+    return {
+      field: "manufacturerOrPacker",
+      value: {
+        name,
+        address,
+        pincode,
+        role,
+        rawText: rawTextLine,
+      },
+      rawValue: rawTextLine,
+      confidence: 0.92,
+      confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+      sourceType: "OCR_TEXT",
+    };
   }
 
   return {
@@ -175,6 +210,7 @@ export function parseManufacturerOrPacker(rawText: string): ExtractedField<Manuf
     sourceType: "OCR_TEXT",
   };
 }
+
 
 /**
  * Parses Net Quantity from OCR raw text.

@@ -235,19 +235,18 @@ export function analyzePixelData(
     let status: "GOOD" | "BORDERLINE" | "POOR";
 
     if (
-      compositeScore >= 0.75 &&
-      blurScore >= 0.55 &&
-      brightnessScore >= 0.55 &&
-      glareScore >= 0.55 &&
-      resolutionScore >= 0.55
+      compositeScore >= 0.60 &&
+      blurScore >= 0.40 &&
+      brightnessScore >= 0.40 &&
+      glareScore >= 0.40 &&
+      resolutionScore >= 0.40
     ) {
       status = "GOOD";
       reasons.length = 0; // Clear mild reasons if overall high grade
     } else if (
-      compositeScore >= 0.55 &&
-      blurScore >= 0.35 &&
-      brightnessScore >= 0.35 &&
-      glareScore >= 0.35
+      compositeScore >= 0.40 &&
+      blurScore >= 0.25 &&
+      brightnessScore >= 0.25
     ) {
       status = "BORDERLINE";
     } else {

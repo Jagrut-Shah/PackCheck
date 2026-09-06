@@ -1,5 +1,5 @@
 import React from "react";
-import { Edit3, CheckCheck, Image as ImageIcon } from "lucide-react";
+import { Edit3, CheckCheck, Image as ImageIcon, AlertTriangle, XCircle } from "lucide-react";
 import { ConfidenceIndicator } from "./confidence-indicator";
 import { ConfidenceLevel } from "@/lib/types/common";
 import { cn } from "@/lib/utils";
@@ -29,17 +29,18 @@ export const ExtractionFieldRow: React.FC<ExtractionFieldRowProps> = ({
 }) => {
   const isLow = confidenceLevel === "LOW";
   const isMed = confidenceLevel === "MEDIUM";
+  const isResolved = isOverridden === true;
 
   return (
     <div
       className={cn(
         "flex flex-col sm:flex-row sm:items-start justify-between gap-3 p-3.5 rounded-lg border bg-white transition-colors",
-        isLow
-          ? "border-[#FCA5A5] bg-[#FEE2E2]/30 hover:border-[#991B1B]"
+        isResolved
+          ? "border-[#86EFAC] bg-[#DCFCE7]/20"
+          : isLow
+          ? "border-[#FCA5A5] bg-[#FEE2E2]/40 hover:border-[#991B1B]"
           : isMed
-          ? "border-[#FCD34D] bg-[#FEF3C7]/25 hover:border-[#92400E]"
-          : isOverridden
-          ? "border-[#86EFAC] bg-[#DCFCE7]/25 hover:border-[#166534]"
+          ? "border-[#FCD34D] bg-[#FEF3C7]/30 hover:border-[#92400E]"
           : "border-[#E2E8F0] hover:border-[#CBD5E1]"
       )}
     >
@@ -49,16 +50,28 @@ export const ExtractionFieldRow: React.FC<ExtractionFieldRowProps> = ({
           <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0]">
             {ruleReference}
           </span>
-          {isOverridden && (
+          {isResolved && (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#166534] bg-[#DCFCE7] px-1.5 py-0.5 rounded border border-[#86EFAC]">
               <CheckCheck className="size-3" />
               Officer Corrected
             </span>
           )}
+          {!isResolved && isLow && !value && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#991B1B] bg-[#FEE2E2] px-1.5 py-0.5 rounded border border-[#FCA5A5]">
+              <XCircle className="size-3" />
+              Click ✏️ to enter this value
+            </span>
+          )}
+          {!isResolved && isMed && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#92400E] bg-[#FEF3C7] px-1.5 py-0.5 rounded border border-[#FCD34D]">
+              <AlertTriangle className="size-3" />
+              Confirm this matches the package
+            </span>
+          )}
         </div>
 
         <p className="text-xs text-[#0F172A] font-medium leading-relaxed mt-1">
-          {value || <span className="text-[#94A3B8] italic">Not detected on package</span>}
+          {value || <span className="text-[#94A3B8] italic">Not detected — please enter manually</span>}
         </p>
 
         {rawValue && rawValue !== value && (
@@ -76,13 +89,24 @@ export const ExtractionFieldRow: React.FC<ExtractionFieldRowProps> = ({
           </span>
         )}
 
-        <ConfidenceIndicator level={confidenceLevel} score={confidenceScore} />
+        <ConfidenceIndicator
+          level={isResolved ? "HIGH" : confidenceLevel}
+          score={confidenceScore}
+          isOverridden={isResolved}
+        />
 
         <button
           type="button"
           onClick={onEdit}
-          className="p-1.5 rounded-md text-[#64748B] hover:text-[#1D4ED8] hover:bg-[#EFF6FF] hover:scale-105 active:scale-95 transition-all duration-150 cursor-pointer border border-transparent hover:border-[#BFDBFE]"
-          title="Correct extracted declaration"
+          className={cn(
+            "p-1.5 rounded-md transition-all duration-150 cursor-pointer border",
+            isResolved
+              ? "text-[#166534] hover:text-[#14532D] hover:bg-[#DCFCE7] border-transparent hover:border-[#86EFAC]"
+              : isLow
+              ? "text-[#991B1B] hover:text-[#7F1D1D] hover:bg-[#FEE2E2] border border-[#FCA5A5] animate-pulse hover:animate-none"
+              : "text-[#64748B] hover:text-[#1D4ED8] hover:bg-[#EFF6FF] hover:scale-105 active:scale-95 border-transparent hover:border-[#BFDBFE]"
+          )}
+          title={isLow ? "This field needs your input — click to enter the value" : "Edit this extracted declaration"}
         >
           <Edit3 className="size-3.5" />
         </button>
