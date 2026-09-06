@@ -49,15 +49,18 @@ export default function OfficerProfilePage() {
             .eq("status", "COMPLETED");
 
           setCompletedAudits(compRes.count || 0);
+        } else {
+          router.push("/login");
         }
       } catch (err) {
         console.warn("Could not load officer credentials or metrics:", err);
+        router.push("/login");
       } finally {
         setIsLoading(false);
       }
     }
     loadData();
-  }, []);
+  }, [router]);
 
   const handleCopyOfficerId = (idText: string) => {
     navigator.clipboard.writeText(idText);
@@ -78,21 +81,17 @@ export default function OfficerProfilePage() {
     }
   };
 
+  if (isLoading || !user) {
+    return (
+      <div className="p-16 text-center text-xs text-[#64748B]">
+        <div className="inline-flex h-7 w-7 animate-spin rounded-full border-2 border-[#CBD5E1] border-t-[#1D4ED8] mb-3" />
+        <p>Loading officer profile & credentials...</p>
+      </div>
+    );
+  }
+
   // Canonical Officer Information
-  const officer: UserProfile = user || {
-    id: "officer_enforcement_delhi",
-    fullName: "Jagrut Shah",
-    employeeCode: "LM-DEL-2024-8841",
-    email: "jagrut.shah@delhi.gov.in",
-    role: "INSPECTOR",
-    designation: "Legal Metrology Inspector (General Cadre)",
-    department: "Legal Metrology Division, Department of Consumer Affairs",
-    organizationId: "DCA-IND-NZ",
-    departmentId: "LM-ZONE-CENTRAL",
-    jurisdictionDistrict: "Delhi NCR — Central Enforcement Division",
-    jurisdictionState: "NCT of Delhi",
-    isActive: true,
-  };
+  const officer: UserProfile = user;
 
   const initials = officer.fullName
     ? officer.fullName
@@ -103,15 +102,6 @@ export default function OfficerProfilePage() {
         .toUpperCase()
     : "LM";
 
-  if (isLoading) {
-    return (
-      <div className="p-16 text-center text-xs text-[#64748B]">
-        <div className="inline-flex h-7 w-7 animate-spin rounded-full border-2 border-[#CBD5E1] border-t-[#1D4ED8] mb-3" />
-        <p>Loading officer profile & credentials...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-6 max-w-5xl mx-auto pb-12">
       {/* Top Page Header */}
@@ -120,20 +110,10 @@ export default function OfficerProfilePage() {
         description="Departmental credentials and gazetted enforcement jurisdiction."
         actions={
           <div className="flex items-center gap-2">
-            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-[#EFF6FF] border border-[#BFDBFE] text-[#1D4ED8] text-xs font-semibold">
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-[#EFF6FF] border border-[#BFDBFE] text-[#1D4ED8] text-xs font-semibold">
               <ShieldCheck className="size-3.5" />
               <span>Gazetted Enforcement Clearance</span>
             </div>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              disabled={isSigningOut}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#FEE2E2] bg-white hover:bg-[#FEF2F2] text-[#DC2626] text-xs font-medium transition-colors cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
-              title="Sign out of officer terminal"
-            >
-              <LogOut className="size-3.5" />
-              <span>{isSigningOut ? "Signing Out..." : "Sign Out"}</span>
-            </button>
           </div>
         }
       />

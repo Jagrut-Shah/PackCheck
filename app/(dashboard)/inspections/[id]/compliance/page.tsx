@@ -214,12 +214,6 @@ export default function CompliancePage({ params }: CompliancePageProps) {
           </Link>
 
           <div className="flex items-center gap-2">
-            <Link href={`/inspections/${inspection.id}/evidence`}>
-              <Button variant="secondary" size="sm" leftIcon={<ImageIcon className="size-3.5" />}>
-                Photographic Evidence
-              </Button>
-            </Link>
-
             <Link href={`/inspections/${inspection.id}/report`}>
               <Button variant="primary" size="sm" rightIcon={<ArrowRight className="size-3.5" />}>
                 Proceed to Inspection Report

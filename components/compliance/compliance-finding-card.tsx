@@ -84,14 +84,6 @@ export const ComplianceFindingCard: React.FC<ComplianceFindingCardProps> = ({
             </p>
           </div>
         </div>
-
-        <Link
-          href={`/inspections/${inspectionId}/evidence`}
-          className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1D4ED8] hover:text-[#1E40AF] hover:bg-[#EFF6FF] px-2.5 py-1 rounded-md transition-all duration-150 cursor-pointer active:scale-95 border border-transparent hover:border-[#BFDBFE] shrink-0"
-        >
-          <span>View Evidence</span>
-          <ExternalLink className="size-3" />
-        </Link>
       </div>
 
       {/* Observed vs Legal Requirement comparison */}

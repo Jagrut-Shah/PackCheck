@@ -114,18 +114,6 @@ export const RuleChecklistItem: React.FC<RuleChecklistItemProps> = ({ result, in
           </p>
         </div>
       </div>
-
-      {inspectionId && (
-        <div className="flex justify-end pt-1">
-          <Link
-            href={`/inspections/${inspectionId}/evidence`}
-            className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1D4ED8] hover:text-[#1E40AF] hover:bg-[#EFF6FF] px-2.5 py-1 rounded-md transition-all duration-150 cursor-pointer active:scale-95 border border-transparent hover:border-[#BFDBFE]"
-          >
-            <span>View Photo Evidence</span>
-            <ExternalLink className="size-3" />
-          </Link>
-        </div>
-      )}
     </div>
   );
 };

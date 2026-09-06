@@ -52,12 +52,6 @@ export const InspectionStepper: React.FC<InspectionStepperProps> = ({
       icon: <ShieldAlert className="size-3.5" />,
     },
     {
-      id: "evidence",
-      label: "Evidence",
-      href: `/inspections/${inspectionId}/evidence`,
-      icon: <ImageIcon className="size-3.5" />,
-    },
-    {
       id: "report",
       label: "Report",
       href: `/inspections/${inspectionId}/report`,

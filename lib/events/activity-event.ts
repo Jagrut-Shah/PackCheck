@@ -63,6 +63,13 @@ export function ensureUtcIso(dateStr: string | null | undefined): string {
   return isNaN(d.getTime()) ? new Date(s).toISOString() : d.toISOString();
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function toValidUuidOrNull(val: string | undefined | null): string | null {
+  if (!val) return null;
+  const s = String(val).trim();
+  return UUID_REGEX.test(s) ? s : null;
+}
+
 export type ActivityAction =
   | "INSPECTION_CREATED"
   | "IMAGE_UPLOADED"
@@ -199,30 +206,74 @@ export async function recordActivityEvent(input: ActivityEventInput): Promise<{
     inMemoryAuditLogs.pop();
   }
 
-  // 2. Persist to public.audit_logs in Supabase
+  // 2. Persist to public.audit_log in Supabase
   try {
-    const { error: auditError } = await db.from("audit_logs").insert([
+    const validInspectionId = toValidUuidOrNull(inspectionId);
+    const validActorId = toValidUuidOrNull(officerId);
+
+    const fullPayload = {
+      actionLabel: input.actionLabel,
+      inspectionNumber,
+      inspectionId,
+      commodityName,
+      officerName,
+      officerId,
+      details: input.details,
+      verificationHash,
+      ipAddress,
+      category,
+      metadata: input.metadata || {},
+    };
+
+    // Attempt authoritative insert into public.audit_log
+    let { error: auditError } = await db.from("audit_log").insert([
       {
-        id: crypto.randomUUID(),
-        inspection_id: inspectionId || null,
+        inspection_id: validInspectionId,
         action: input.action,
-        action_label: input.actionLabel,
-        category,
-        actor_id: officerId,
-        actor_name: officerName,
-        details: input.details,
-        verification_hash: verificationHash,
-        ip_address: ipAddress,
-        metadata: input.metadata || {},
-        created_at: now,
+        actor_id: validActorId,
+        details: JSON.stringify(fullPayload),
+        timestamp: now,
       },
     ]);
 
+    // If foreign key constraint failed (e.g. temporary inspection ID or officer UUID not in table), retry with null FKs
+    if (auditError && (auditError.code === "23503" || auditError.message?.includes("foreign key"))) {
+      const retryResult = await db.from("audit_log").insert([
+        {
+          inspection_id: null,
+          action: input.action,
+          actor_id: null,
+          details: JSON.stringify(fullPayload),
+          timestamp: now,
+        },
+      ]);
+      auditError = retryResult.error;
+    }
+
     if (auditError) {
-      console.warn("Notice: audit_logs remote table not yet migrated, buffered in-memory:", auditError.message);
+      // Fallback attempt to audit_logs if migration created pluralized table
+      const { error: fallbackError } = await db.from("audit_logs").insert([
+        {
+          id: crypto.randomUUID(),
+          inspection_id: validInspectionId,
+          action: input.action,
+          action_label: input.actionLabel,
+          category,
+          actor_id: officerId,
+          actor_name: officerName,
+          details: input.details,
+          verification_hash: verificationHash,
+          ip_address: ipAddress,
+          metadata: input.metadata || {},
+          created_at: now,
+        },
+      ]);
+      if (fallbackError) {
+        console.warn("Notice: could not persist to audit_log / audit_logs:", auditError.message, fallbackError.message);
+      }
     }
   } catch (err) {
-    console.warn("Notice: Exception writing to audit_logs table, buffered in-memory:", err);
+    console.warn("Notice: Exception writing to audit_log table, buffered in-memory:", err);
   }
 
   // 3. If notification-worthy, generate exactly ONE notification
@@ -313,19 +364,21 @@ export async function getAuthoritativeAuditLogs(params?: {
   const results: StoredAuditLog[] = [];
   const seenIds = new Set<string>();
 
-  // 1. Try querying remote public.audit_logs
+  // 1. Try querying remote public.audit_log (authoritative table)
   try {
     let query = db
-      .from("audit_logs")
+      .from("audit_log")
       .select("*")
-      .order("created_at", { ascending: false })
+      .order("timestamp", { ascending: false })
       .limit(100);
 
-    if (params?.userId) {
-      query = query.eq("actor_id", params.userId);
+    const validUserId = toValidUuidOrNull(params?.userId);
+    if (validUserId) {
+      query = query.eq("actor_id", validUserId);
     }
-    if (params?.inspectionId) {
-      query = query.eq("inspection_id", params.inspectionId);
+    const validInspectionId = toValidUuidOrNull(params?.inspectionId);
+    if (validInspectionId) {
+      query = query.eq("inspection_id", validInspectionId);
     }
     if (params?.action) {
       query = query.eq("action", params.action);
@@ -334,29 +387,103 @@ export async function getAuthoritativeAuditLogs(params?: {
     const { data, error } = await query;
     if (!error && data && data.length > 0) {
       for (const row of data) {
-        const shortId = (row.inspection_id || "").substring(0, 8).toUpperCase();
+        let detailsObj: any = {};
+        if (typeof row.details === "string") {
+          try {
+            detailsObj = JSON.parse(row.details);
+          } catch {
+            detailsObj = { details: row.details };
+          }
+        } else if (typeof row.details === "object" && row.details !== null) {
+          detailsObj = row.details;
+        }
+
+        const shortId = (row.inspection_id || detailsObj.inspectionId || "").substring(0, 8).toUpperCase();
+        const inspNum = detailsObj.inspectionNumber || (shortId ? `INS-${shortId}` : "GENERAL");
+        const detailsText = detailsObj.details || (typeof row.details === "string" && !row.details.startsWith("{") ? row.details : "");
+
         const entry: StoredAuditLog = {
           id: row.id,
-          timestamp: ensureUtcIso(row.created_at),
-          action: row.action as ActivityAction,
-          actionLabel: row.action_label,
-          inspectionNumber: row.metadata?.inspectionNumber || `INS-${shortId}`,
-          inspectionId: row.inspection_id || "",
-          commodityName: row.metadata?.commodityName || "Packaged Commodity",
-          officerName: row.actor_name || "Legal Metrology Inspector",
-          officerId: row.actor_id || "officer_enforcement",
-          details: row.details,
-          verificationHash: row.verification_hash,
-          ipAddress: row.ip_address || "10.42.18.91 (Enforcement Terminal)",
-          category: row.category || "SYSTEM",
-          metadata: row.metadata,
+          timestamp: ensureUtcIso(row.timestamp),
+          action: (row.action || detailsObj.action) as ActivityAction,
+          actionLabel: detailsObj.actionLabel || row.action || "System Event",
+          inspectionNumber: inspNum,
+          inspectionId: row.inspection_id || detailsObj.inspectionId || "",
+          commodityName: detailsObj.commodityName || "Packaged Commodity",
+          officerName: detailsObj.officerName || "Legal Metrology Inspector",
+          officerId: row.actor_id || detailsObj.officerId || "officer_enforcement",
+          details: detailsText,
+          verificationHash: detailsObj.verificationHash || computeHash(`${row.id}:${row.action}:${row.timestamp}`),
+          ipAddress: detailsObj.ipAddress || "10.42.18.91 (Enforcement Terminal)",
+          category: detailsObj.category || "SYSTEM",
+          metadata: detailsObj.metadata || {},
         };
+
+        if (params?.search) {
+          const s = params.search.toLowerCase();
+          const matches =
+            entry.inspectionNumber.toLowerCase().includes(s) ||
+            entry.commodityName.toLowerCase().includes(s) ||
+            entry.actionLabel.toLowerCase().includes(s) ||
+            entry.details.toLowerCase().includes(s) ||
+            entry.officerName.toLowerCase().includes(s);
+          if (!matches) continue;
+        }
+
         seenIds.add(entry.id);
         results.push(entry);
       }
     }
   } catch (err) {
-    // Fall back to in-memory buffer
+    // Fall back to buffer or synthesis
+  }
+
+  // 1b. If audit_log gave no results, try querying legacy audit_logs
+  if (results.length === 0) {
+    try {
+      let query = db
+        .from("audit_logs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      if (params?.userId) {
+        query = query.eq("actor_id", params.userId);
+      }
+      if (params?.inspectionId) {
+        query = query.eq("inspection_id", params.inspectionId);
+      }
+      if (params?.action) {
+        query = query.eq("action", params.action);
+      }
+
+      const { data, error } = await query;
+      if (!error && data && data.length > 0) {
+        for (const row of data) {
+          const shortId = (row.inspection_id || "").substring(0, 8).toUpperCase();
+          const entry: StoredAuditLog = {
+            id: row.id,
+            timestamp: ensureUtcIso(row.created_at),
+            action: row.action as ActivityAction,
+            actionLabel: row.action_label,
+            inspectionNumber: row.metadata?.inspectionNumber || `INS-${shortId}`,
+            inspectionId: row.inspection_id || "",
+            commodityName: row.metadata?.commodityName || "Packaged Commodity",
+            officerName: row.actor_name || "Legal Metrology Inspector",
+            officerId: row.actor_id || "officer_enforcement",
+            details: row.details,
+            verificationHash: row.verification_hash,
+            ipAddress: row.ip_address || "10.42.18.91 (Enforcement Terminal)",
+            category: row.category || "SYSTEM",
+            metadata: row.metadata,
+          };
+          seenIds.add(entry.id);
+          results.push(entry);
+        }
+      }
+    } catch (err) {
+      // Fall back to in-memory buffer
+    }
   }
 
   // 2. Merge in-memory buffer events

@@ -191,13 +191,6 @@ export default function InspectionDetailPage({ params }: InspectionDetailPagePro
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
                 Package Photos ({inspection.images.length})
               </CardTitle>
-              <Link
-                href={`/inspections/${inspection.id}/evidence`}
-                className="text-xs text-[#1D4ED8] font-semibold hover:underline flex items-center gap-1"
-              >
-                <span>Evidence Viewer</span>
-                <ExternalLink className="size-3" />
-              </Link>
             </CardHeader>
             <CardContent className="p-4 space-y-3 text-xs">
               {inspection.images.length === 0 ? (
