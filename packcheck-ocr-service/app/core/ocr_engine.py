@@ -56,12 +56,28 @@ class GoogleVisionOCRProvider:
             return
 
         try:
+            credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+            if not credentials_path or not os.path.isfile(credentials_path):
+                raise OCRExecutionError(
+                    message=(
+                        "Google Cloud Vision credentials are unavailable. "
+                        "Set GOOGLE_APPLICATION_CREDENTIALS to the mounted Render Secret File path."
+                    ),
+                    details={
+                        "provider": "google_vision",
+                        "credentials_configured": bool(credentials_path),
+                        "credentials_file_exists": bool(credentials_path and os.path.isfile(credentials_path)),
+                    },
+                )
+
             from google.cloud import vision
 
             self._client = vision.ImageAnnotatorClient()
             self._image_factory = lambda content: vision.Image(content=content)
             self._initialized = True
             logger.info("Google Cloud Vision OCR client initialized.")
+        except OCRExecutionError:
+            raise
         except Exception as exc:
             raise OCRExecutionError(
                 message=f"Google Cloud Vision failed to initialize: {exc}",
