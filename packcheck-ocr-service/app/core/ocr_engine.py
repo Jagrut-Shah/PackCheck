@@ -93,7 +93,9 @@ class OCREngineManager:
             self._engine = PaddleOCR(
                 ocr_version="PP-OCRv4",
                 lang=lang,
-                use_textline_orientation=True
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
             )
             self._initialized = True
             elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)

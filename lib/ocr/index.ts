@@ -189,8 +189,11 @@ export async function processImageOCR(
     }
 
     if (response.status === 502) {
+      const msg = errorDetail && errorDetail.length > 2
+        ? errorDetail
+        : "PaddleOCR microservice container crashed or is restarting on Render (possibly out of memory on Free Tier).";
       throw new OcrServiceError(
-        `FastAPI bad gateway (HTTP 502): ${errorDetail}`,
+        `FastAPI bad gateway (HTTP 502): ${msg}`,
         "MALFORMED_OCR_RESPONSE",
         502,
         { errorDetail, elapsedMs }

@@ -51,9 +51,9 @@ class Settings(BaseSettings):
     PADDLE_OCR_MODEL_VERSION: str = "v2.7.3-PP-OCRv4"
     PADDLE_OCR_LANGUAGES: List[str] = ["en"]
     MAX_IMAGE_SIZE_MB: int = 15
-    MAX_IMAGE_DIMENSION: int = int(os.getenv("MAX_IMAGE_DIMENSION", "1600"))
+    MAX_IMAGE_DIMENSION: int = int(os.getenv("MAX_IMAGE_DIMENSION", "1200"))
     MAX_DESKEW_ANGLE_DEG: float = 15.0
-    NUM_OCR_WORKERS: int = max(1, os.cpu_count() or 2)
+    NUM_OCR_WORKERS: int = int(os.getenv("NUM_OCR_WORKERS", "1"))
 
 
 settings = Settings()

@@ -569,6 +569,9 @@ export async function recordInspectionCompanyLink(
     }
   }
 
+  if (!inMemoryLinks) {
+    inMemoryLinks = {};
+  }
   inMemoryLinks[inspectionId] = { companyId, companyName };
 
   // 2. Persist to Supabase Storage asynchronously

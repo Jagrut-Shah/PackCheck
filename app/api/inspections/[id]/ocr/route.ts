@@ -340,46 +340,52 @@ export async function POST(
     let errorMessage = "Failed to execute OCR processing pipeline.";
     let errorDetails: unknown = err instanceof Error ? err.message : "Unknown error";
 
-    if (err instanceof OcrServiceError) {
-      errorCode = err.code;
-      errorStatus = err.statusCode;
-      errorMessage = err.message;
+    const isOcrServiceErr =
+      err instanceof OcrServiceError ||
+      err?.name === "OcrServiceError" ||
+      Boolean(err?.code && err?.statusCode);
+
+    if (isOcrServiceErr) {
+      errorCode = err.code || "OCR_PROCESSING_FAILED";
+      errorStatus = err.statusCode || 500;
+      errorMessage = err.message || "Failed to execute OCR processing pipeline.";
       errorDetails = err.details || err.message;
-    } else if (err instanceof Error) {
-      const msg = err.message || "";
-      if (msg.includes("ECONNREFUSED") || msg.includes("fetch failed")) {
+    } else {
+      const rawMsg = err?.message || (typeof err === "string" ? err : JSON.stringify(err)) || "";
+      if (rawMsg.includes("ECONNREFUSED") || rawMsg.includes("fetch failed")) {
         errorCode = "FASTAPI_CONNECTION_FAILURE";
         errorStatus = 503;
         errorMessage = "FastAPI connection failure: Could not connect to PaddleOCR microservice. Ensure the microservice is running.";
-      } else if (msg.includes("PADDLEOCR_PROCESSING_TIMEOUT") || msg.includes("PaddleOCR processing timeout")) {
+      } else if (rawMsg.includes("PADDLEOCR_PROCESSING_TIMEOUT") || rawMsg.includes("PaddleOCR processing timeout")) {
         errorCode = "PADDLEOCR_PROCESSING_TIMEOUT";
         errorStatus = 504;
         errorMessage = "PaddleOCR processing timeout: OCR inference took longer than allowed.";
-      } else if (msg.includes("FASTAPI_TIMEOUT") || msg.includes("timeout") || msg.includes("504")) {
+      } else if (rawMsg.includes("FASTAPI_TIMEOUT") || rawMsg.includes("timeout") || rawMsg.includes("504")) {
         errorCode = "FASTAPI_TIMEOUT";
         errorStatus = 504;
         errorMessage = "FastAPI timeout: The OCR microservice timed out while processing.";
-      } else if (msg.includes("MALFORMED_OCR_RESPONSE") || msg.includes("JSON") || msg.includes("Unexpected token")) {
+      } else if (rawMsg.includes("MALFORMED_OCR_RESPONSE") || rawMsg.includes("502") || rawMsg.includes("Bad Gateway") || rawMsg.includes("JSON") || rawMsg.includes("Unexpected token")) {
         errorCode = "MALFORMED_OCR_RESPONSE";
         errorStatus = 502;
-        errorMessage = "Malformed response: Upstream OCR service returned non-JSON data.";
-      } else if (msg.includes("GEMINI") || msg.includes("Gemini")) {
+        errorMessage = `OCR service bad gateway (HTTP 502): The PaddleOCR microservice on Render restarted or was unavailable. (${rawMsg.slice(0, 120)})`;
+      } else if (rawMsg.includes("GEMINI") || rawMsg.includes("Gemini")) {
         errorCode = "DOWNSTREAM_GEMINI_TIMEOUT";
         errorStatus = 504;
         errorMessage = "Downstream Gemini API timeout during extraction enrichment.";
-      } else if (msg.includes("VERCEL_FUNCTION_TIMEOUT")) {
+      } else if (rawMsg.includes("VERCEL_FUNCTION_TIMEOUT")) {
         errorCode = "VERCEL_FUNCTION_TIMEOUT";
         errorStatus = 504;
         errorMessage = "Vercel function timeout: OCR pipeline reached maximum execution limit.";
-      } else if (msg.includes("IMAGE_RETRIEVAL_FAILED") || msg.includes("ImageDownloadError")) {
+      } else if (rawMsg.includes("IMAGE_RETRIEVAL_FAILED") || rawMsg.includes("ImageDownloadError")) {
         errorCode = "IMAGE_RETRIEVAL_FAILED";
         errorStatus = 502;
         errorMessage = "Inspection image exists, but the OCR service could not retrieve it from storage.";
       } else {
         errorCode = "UNEXPECTED_SERVER_EXCEPTION";
         errorStatus = 500;
-        errorMessage = `Internal server error during OCR processing: ${msg}`;
+        errorMessage = rawMsg ? `OCR processing error: ${rawMsg}` : "Internal server error during OCR processing.";
       }
+      errorDetails = err?.details || rawMsg || "Unknown error";
     }
 
     console.error(`[OCR_ROUTE_CATEGORIZED_ERROR] [${errorCode}] (HTTP ${errorStatus}, ${elapsedMs}ms):`, {

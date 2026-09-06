@@ -13,7 +13,9 @@ ENV PYTHONUNBUFFERED=1 \
     ALLOW_LOCAL_FILE_ACCESS=false \
     FLAGS_use_mkldnn=0 \
     PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True \
-    OCR_SERVICE_API_KEY=a3e7d5678af45055bcdb276fe1c304fff35375ee359373c67aed2234d6487057
+    OCR_SERVICE_API_KEY=a3e7d5678af45055bcdb276fe1c304fff35375ee359373c67aed2234d6487057 \
+    MAX_IMAGE_DIMENSION=1200 \
+    NUM_OCR_WORKERS=1
 
 # Install required Linux system packages for OpenCV and PaddleOCR inference
 RUN apt-get update && apt-get install -y --no-install-recommends \
