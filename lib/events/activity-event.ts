@@ -81,7 +81,8 @@ export type ActivityAction =
   | "REPORT_SIGNED"
   | "PIPELINE_RETRIED"
   | "NOTIFICATION_READ"
-  | "PACKER_REGISTERED";
+  | "PACKER_REGISTERED"
+  | "COMPLIANCE_RE_EVALUATED";
 
 export type NotificationType = "CRITICAL" | "COMPLIANT" | "REVIEW" | "INFO" | "WARNING";
 

@@ -70,6 +70,8 @@ class OCREngineManager:
         try:
             # Set environment flags to prevent hoster check stalls
             os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
+            # PaddlePaddle 3.x CPU oneDNN can fail on PIR model attributes.
+            os.environ["FLAGS_use_mkldnn"] = "0"
 
             # Apply safe predictor patch to prevent Windows PIR oneDNN instruction error on Windows only
             import sys

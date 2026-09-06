@@ -8,6 +8,8 @@ import {
   getAllInspectionCompanyLinks
 } from '@/lib/companies/storage'
 
+import { processImageOCR } from '@/lib/ocr'
+
 const FILE_SIZE_LIMIT_BYTES = 15 * 1024 * 1024 // 15 MB
 
 interface UploadedImageInfo {
@@ -519,6 +521,59 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 500 }
       )
     }
+    
+    //     // ============================================================
+    // // 11.5 AUTO-TRIGGER OCR FOR ALL IMAGES (NEW FIX #1)
+    // // ============================================================
+    // // Fire-and-forget: OCR processes asynchronously
+    // // Don't block upload response on OCR completion
+    
+    // if (imageRecords && imageRecords.length > 0) {
+    //   const ocrPromises = imageRecords.map((imgRecord) => {
+    //     return processImageOCR({
+    //       inspectionId: inspectionData.id,
+    //       imageId: imgRecord.id,
+    //       imageLocation: imgRecord.image_url,
+    //       options: {
+    //         deskew: true,
+    //         denoise: true,
+    //         contrastEnhancement: true,
+    //         languages: ["en"],
+    //       },
+    //     }).catch((err) => {
+    //       // Log OCR error but don't fail upload
+    //       console.warn(
+    //         `[AUTO_OCR] Failed for image ${imgRecord.id}:`,
+    //         err instanceof Error ? err.message : err
+    //       );
+    //       return null; // Indicate failure but continue
+    //     });
+    //   });
+
+    //   // Wait for all OCR attempts (success or failure)
+    //   // Timeout after 60 seconds to avoid blocking upload indefinitely
+    //   Promise.allSettled(ocrPromises)
+    //     .then((results) => {
+    //       const successCount = results.filter(
+    //         (r) => r.status === "fulfilled" && r.value !== null
+    //       ).length;
+    //       const failCount = imageRecords.length - successCount;
+          
+    //       if (failCount > 0) {
+    //         console.warn(
+    //           `[AUTO_OCR] Completed: ${successCount} succeeded, ${failCount} failed`
+    //         );
+    //       } else {
+    //         console.info(
+    //           `[AUTO_OCR] All ${successCount} images processed successfully`
+    //         );
+    //       }
+    //     })
+    //     .catch((err) => {
+    //       console.error("[AUTO_OCR] Promise.allSettled error:", err);
+    //     });
+    // }
+
 
     // --------------------------------------------------------
     // 12. Record Authoritative Activity Events & Notifications

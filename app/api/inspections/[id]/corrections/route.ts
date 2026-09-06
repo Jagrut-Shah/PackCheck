@@ -118,6 +118,40 @@ export async function POST(
       )
     }
 
+
+    // ============================================================
+    // AUTO-TRIGGER RE-EVALUATION (NEW FIX #4)
+    // ============================================================
+    // After corrections are stored, automatically re-evaluate
+    // compliance with the corrected data
+    
+    try {
+      const reEvalResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/inspections/${inspectionId}/re-evaluate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }
+      );
+
+      if (!reEvalResponse.ok) {
+        const reEvalError = await reEvalResponse.text();
+        console.warn('[AUTO_RE_EVAL] Re-evaluation failed:', reEvalError);
+        // Don't fail the correction response, just log the warning
+      } else {
+        const reEvalData = await reEvalResponse.json();
+        console.info(
+          '[AUTO_RE_EVAL] Success:',
+          reEvalData.data?.message
+        );
+      }
+    } catch (reEvalErr) {
+      console.error('[AUTO_RE_EVAL] Unexpected error:', reEvalErr);
+      // Don't fail correction response
+    }
+
+
     // Record FIELD_CORRECTED events
     try {
       for (const item of body.corrections) {

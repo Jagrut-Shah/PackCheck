@@ -11,6 +11,7 @@ ENV PYTHONUNBUFFERED=1 \
     PORT=8000 \
     ENVIRONMENT=production \
     ALLOW_LOCAL_FILE_ACCESS=false \
+    FLAGS_use_mkldnn=0 \
     PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
 
 # Install required Linux system packages for OpenCV and PaddleOCR inference
