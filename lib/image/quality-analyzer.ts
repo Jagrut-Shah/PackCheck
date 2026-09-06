@@ -22,7 +22,9 @@ export interface ImageQualityAnalysisResult {
 export function analyzePixelData(
   rgba: Uint8ClampedArray | Buffer | number[],
   width: number,
-  height: number
+  height: number,
+  naturalWidth?: number,
+  naturalHeight?: number
 ): ImageQualityAnalysisResult {
   try {
     const totalPixels = width * height;
@@ -38,13 +40,17 @@ export function analyzePixelData(
     const reasons: string[] = [];
 
     // ------------------------------------------------------------------------
-    // 1. RESOLUTION ASSESSMENT
+    // 1. RESOLUTION ASSESSMENT (Evaluated against original natural photo size)
     // ------------------------------------------------------------------------
+    const realW = naturalWidth || width;
+    const realH = naturalHeight || height;
+    const totalPhysicalPixels = realW * realH;
+
     let resolutionScore = 1.0;
-    if (totalPixels < 640 * 480) {
+    if (totalPhysicalPixels < 640 * 480) {
       resolutionScore = 0.35;
       reasons.push("Image resolution is too low.");
-    } else if (totalPixels < 1200 * 900) {
+    } else if (totalPhysicalPixels < 1200 * 900) {
       resolutionScore = 0.7;
     } else {
       resolutionScore = 0.98;
@@ -356,8 +362,8 @@ export async function analyzeImageQuality(
           ctx.drawImage(img, 0, 0, canvasW, canvasH);
           const imageData = ctx.getImageData(0, 0, canvasW, canvasH);
 
-          // Note: pass actual natural resolution for resolution scoring
-          const result = analyzePixelData(imageData.data, naturalW, naturalH);
+          // Pass canvas dimensions for pixel buffer, and natural resolution for scoring
+          const result = analyzePixelData(imageData.data, canvasW, canvasH, naturalW, naturalH);
           safeResolve(result);
         } catch (e) {
           console.error("Canvas pixel extraction failed:", e);
