@@ -70,6 +70,12 @@ def test_provider_selection_supports_google_vision_and_paddleocr(monkeypatch):
     assert manager.provider_name == "paddleocr"
 
 
+def test_demo_default_provider_is_google_vision(monkeypatch):
+    monkeypatch.delenv("OCR_PROVIDER", raising=False)
+    monkeypatch.setattr(settings, "OCR_PROVIDER", "google_vision")
+    assert OCREngineManager().provider_name == "google_vision"
+
+
 def test_google_vision_normalizes_text_and_polygon_coordinates():
     client = FakeVisionClient(make_response())
     provider = GoogleVisionOCRProvider(

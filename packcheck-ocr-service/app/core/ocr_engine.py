@@ -186,22 +186,27 @@ class OCREngineManager:
     def provider_name(self) -> str:
         return settings.OCR_PROVIDER.strip().lower()
 
+    def _require_supported_provider(self) -> str:
+        provider = self.provider_name
+        if provider not in {"google_vision", "paddleocr"}:
+            raise OCRExecutionError(
+                message=f"Unsupported OCR provider: {settings.OCR_PROVIDER}",
+                details={"provider": settings.OCR_PROVIDER},
+            )
+        return provider
+
     def initialize_engine(self, lang: str = "en", use_gpu: bool = settings.USE_GPU) -> None:
         """
         Initializes the configured OCR provider during app startup.
         """
-        if self.provider_name == "google_vision":
+        provider = self._require_supported_provider()
+
+        if provider == "google_vision":
             if self._google_provider is None:
                 self._google_provider = GoogleVisionOCRProvider()
             self._google_provider.initialize()
             self._initialized = True
             return
-
-        if self.provider_name != "paddleocr":
-            raise OCRExecutionError(
-                message=f"Unsupported OCR provider: {settings.OCR_PROVIDER}",
-                details={"provider": settings.OCR_PROVIDER},
-            )
 
         if self._initialized and self._engine is not None:
             return
@@ -257,7 +262,8 @@ class OCREngineManager:
 
     def is_ready(self) -> bool:
         """Returns True if native PaddleOCR model is loaded in memory."""
-        if self.provider_name == "google_vision":
+        provider = self._require_supported_provider()
+        if provider == "google_vision":
             return self._google_provider is not None and self._google_provider.is_ready
         return self._initialized and self._engine is not None
 
@@ -268,16 +274,11 @@ class OCREngineManager:
         """
         start_time = time.perf_counter()
 
-        if self.provider_name == "google_vision":
+        provider = self._require_supported_provider()
+        if provider == "google_vision":
             if self._google_provider is None:
                 self._google_provider = GoogleVisionOCRProvider()
             return self._google_provider.process_image(image)
-
-        if self.provider_name != "paddleocr":
-            raise OCRExecutionError(
-                message=f"Unsupported OCR provider: {settings.OCR_PROVIDER}",
-                details={"provider": settings.OCR_PROVIDER},
-            )
 
         if image is None or image.size == 0:
             raise OCRExecutionError(

@@ -19,6 +19,17 @@ router = APIRouter(tags=["Health"])
 )
 async def health_check() -> Dict[str, Any]:
     """Returns microservice operational status."""
+    provider = settings.OCR_PROVIDER.strip().lower()
+    if provider == "google_vision":
+        engine = "Google Cloud Vision"
+        engine_version = "DOCUMENT_TEXT_DETECTION"
+    elif provider == "paddleocr":
+        engine = "PaddleOCR"
+        engine_version = settings.PADDLE_OCR_MODEL_VERSION
+    else:
+        engine = provider
+        engine_version = "unsupported"
+
     return {
         "success": True,
         "data": {
@@ -26,8 +37,8 @@ async def health_check() -> Dict[str, Any]:
             "service": settings.APP_NAME,
             "version": settings.APP_VERSION,
             "environment": settings.ENVIRONMENT,
-            "engine": "Google Cloud Vision" if settings.OCR_PROVIDER.strip().lower() == "google_vision" else "PaddleOCR",
-            "engineVersion": "DOCUMENT_TEXT_DETECTION" if settings.OCR_PROVIDER.strip().lower() == "google_vision" else settings.PADDLE_OCR_MODEL_VERSION,
+            "engine": engine,
+            "engineVersion": engine_version,
             "gpuEnabled": settings.USE_GPU,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
