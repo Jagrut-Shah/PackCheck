@@ -55,7 +55,7 @@ def create_application() -> FastAPI:
     """Factory function creating and configuring the FastAPI application instance."""
     app = FastAPI(
         title="PackCheck AI - OCR Microservice",
-        description="High-performance optical character recognition API powered by the configured OCR provider and OpenCV.",
+        description="High-performance optical character recognition API powered by OCR.space and OpenCV.",
         version=settings.APP_VERSION,
         debug=settings.DEBUG,
         lifespan=lifespan,

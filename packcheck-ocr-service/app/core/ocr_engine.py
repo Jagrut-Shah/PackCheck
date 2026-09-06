@@ -1,7 +1,7 @@
 """
 PackCheck AI - Configurable OCR engine integration service.
-Supports Google Cloud Vision and the existing PaddleOCR implementation while exposing
-one provider-neutral raw detection contract.
+Supports OCR.space and the existing PaddleOCR implementation while exposing one
+provider-neutral raw detection contract.
 """
 
 import os
@@ -9,7 +9,8 @@ import time
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Callable, List, Tuple, Optional
+from typing import List, Tuple, Optional
+import httpx
 import numpy as np
 
 from app.config import settings
@@ -35,126 +36,168 @@ class RawOCRResult:
     raw_text: Optional[str] = None
 
 
-class GoogleVisionOCRProvider:
-    """Google Cloud Vision document OCR adapter using Application Default Credentials."""
+class OCRSpaceProvider:
+    """OCR.space HTTP adapter using the server-side OCR_SPACE_API_KEY."""
 
-    engine_name = "Google Cloud Vision"
-    engine_version = "DOCUMENT_TEXT_DETECTION"
+    engine_name = "OCR.space"
+    engine_version = "OCREngine 2"
+    endpoint = "https://api.ocr.space/parse/image"
 
-    def __init__(
-        self,
-        client=None,
-        image_factory: Optional[Callable[[bytes], object]] = None,
-    ):
+    def __init__(self, client=None):
         self._client = client
-        self._image_factory = image_factory
-        self._initialized = client is not None and image_factory is not None
+        self._initialized = False
 
     def initialize(self) -> None:
-        """Create the Vision client through ADC, without handling credential contents."""
+        """Validate server-side configuration without making a network request."""
         if self._initialized:
             return
-
-        try:
-            credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
-            if not credentials_path or not os.path.isfile(credentials_path):
-                raise OCRExecutionError(
-                    message=(
-                        "Google Cloud Vision credentials are unavailable. "
-                        "Set GOOGLE_APPLICATION_CREDENTIALS to the mounted Render Secret File path."
-                    ),
-                    details={
-                        "provider": "google_vision",
-                        "credentials_configured": bool(credentials_path),
-                        "credentials_file_exists": bool(credentials_path and os.path.isfile(credentials_path)),
-                    },
-                )
-
-            from google.cloud import vision
-
-            self._client = vision.ImageAnnotatorClient()
-            self._image_factory = lambda content: vision.Image(content=content)
-            self._initialized = True
-            logger.info("Google Cloud Vision OCR client initialized.")
-        except OCRExecutionError:
-            raise
-        except Exception as exc:
+        if not (settings.OCR_SPACE_API_KEY or "").strip():
             raise OCRExecutionError(
-                message=f"Google Cloud Vision failed to initialize: {exc}",
-                details={"provider": "google_vision"},
-            ) from exc
+                message="OCR.space API key is not configured on the FastAPI server.",
+                details={"provider": "ocr_space", "configuration": "OCR_SPACE_API_KEY"},
+            )
+        self._initialized = True
+        logger.info("OCR.space provider initialized.")
 
     @staticmethod
-    def _vertices_to_polygon(bounding_box) -> List[Tuple[float, float]]:
-        vertices = getattr(bounding_box, "vertices", []) or []
-        return [
-            (float(getattr(vertex, "x", 0) or 0), float(getattr(vertex, "y", 0) or 0))
-            for vertex in vertices
-        ]
+    def _word_polygon(word) -> List[Tuple[float, float]]:
+        left = float(word.get("Left", 0) or 0)
+        top = float(word.get("Top", 0) or 0)
+        width = float(word.get("Width", 0) or 0)
+        height = float(word.get("Height", 0) or 0)
+        return [(left, top), (left + width, top), (left + width, top + height), (left, top + height)]
 
-    @staticmethod
-    def _word_text(word) -> str:
-        symbols = getattr(word, "symbols", []) or []
-        return "".join(str(getattr(symbol, "text", "")) for symbol in symbols).strip()
-
-    def _paragraph_detection(self, paragraph) -> Optional[RawOCRDetection]:
-        words = getattr(paragraph, "words", []) or []
-        text = " ".join(filter(None, (self._word_text(word) for word in words))).strip()
+    def _line_detection(self, line) -> Optional[RawOCRDetection]:
+        words = line.get("Words") or []
+        text = str(line.get("LineText") or "").strip()
+        if not text:
+            text = " ".join(str(word.get("WordText") or "").strip() for word in words).strip()
         if not text:
             return None
 
-        confidence = float(getattr(paragraph, "confidence", 0.0) or 0.0)
-        if confidence <= 0.0 and words:
-            word_confidences = [float(getattr(word, "confidence", 0.0) or 0.0) for word in words]
-            confidence = sum(word_confidences) / len(word_confidences)
+        polygons = [self._word_polygon(word) for word in words if isinstance(word, dict)]
+        points = [point for polygon in polygons for point in polygon]
+        if not points:
+            return None
 
-        return RawOCRDetection(
-            polygon=self._vertices_to_polygon(getattr(paragraph, "bounding_box", None)),
-            text=text,
-            confidence=round(max(0.0, min(1.0, confidence)), 4),
-        )
+        min_x = min(point[0] for point in points)
+        min_y = min(point[1] for point in points)
+        max_x = max(point[0] for point in points)
+        max_y = max(point[1] for point in points)
+        polygon = [(min_x, min_y), (max_x, min_y), (max_x, max_y), (min_x, max_y)]
+
+        return RawOCRDetection(polygon=polygon, text=text, confidence=0.95)
 
     def process_image(self, image: np.ndarray) -> RawOCRResult:
-        """Run DOCUMENT_TEXT_DETECTION and normalize paragraph geometry."""
+        """Send a lossless PNG representation to OCR.space and normalize overlays."""
         start_time = time.perf_counter()
 
         if image is None or image.size == 0:
             raise OCRExecutionError(message="Cannot execute OCR on an empty or None image matrix.")
-        if not self._initialized or self._client is None or self._image_factory is None:
+        if not self._initialized:
             raise OCRExecutionError(
-                message="Google Cloud Vision OCR client is not initialized.",
-                details={"provider": "google_vision"},
+                message="OCR.space provider is not initialized.",
+                details={"provider": "ocr_space"},
             )
 
         try:
             import cv2
-
-            encoded_ok, encoded_image = cv2.imencode(".jpg", image)
+            encoded_ok, encoded_image = cv2.imencode(".png", image)
             if not encoded_ok:
-                raise OCRExecutionError(message="Google Cloud Vision could not encode the image.")
+                raise OCRExecutionError(message="OCR.space could not encode the image.")
 
-            response = self._client.document_text_detection(
-                image=self._image_factory(encoded_image.tobytes())
-            )
-            api_error = getattr(response, "error", None)
-            if api_error is not None and getattr(api_error, "message", ""):
+            logger.info("Starting OCR.space request.")
+            files = {"file": ("package.png", encoded_image.tobytes(), "image/png")}
+            data = {
+                "apikey": settings.OCR_SPACE_API_KEY,
+                "language": "eng",
+                "OCREngine": "2",
+                "isOverlayRequired": "true",
+                "detectOrientation": "true",
+                "scale": "true",
+            }
+            client = self._client or httpx.Client(timeout=httpx.Timeout(45.0, connect=10.0))
+            try:
+                response = client.post(self.endpoint, files=files, data=data)
+            finally:
+                if self._client is None:
+                    client.close()
+            logger.info(f"OCR.space response received with status {response.status_code}.")
+
+            if response.status_code in (401, 403):
                 raise OCRExecutionError(
-                    message=f"Google Cloud Vision OCR failed: {api_error.message}",
-                    details={"provider": "google_vision"},
+                    message="OCR.space rejected the API key or account quota.",
+                    details={"provider": "ocr_space", "upstream_status": response.status_code},
+                )
+            if response.status_code == 429:
+                raise OCRExecutionError(
+                    message="OCR.space rate limit exceeded.",
+                    details={"provider": "ocr_space", "upstream_status": 429},
+                )
+            if response.status_code >= 400:
+                raise OCRExecutionError(
+                    message=f"OCR.space returned HTTP {response.status_code}.",
+                    details={"provider": "ocr_space", "upstream_status": response.status_code},
                 )
 
-            annotation = getattr(response, "full_text_annotation", None)
-            raw_text = str(getattr(annotation, "text", "") or "")
-            detections: List[RawOCRDetection] = []
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise OCRExecutionError(
+                    message="OCR.space returned malformed JSON.",
+                    details={"provider": "ocr_space"},
+                ) from exc
 
-            for page in getattr(annotation, "pages", []) or []:
-                for block in getattr(page, "blocks", []) or []:
-                    for paragraph in getattr(block, "paragraphs", []) or []:
-                        detection = self._paragraph_detection(paragraph)
+            if not isinstance(payload, dict):
+                raise OCRExecutionError(message="OCR.space returned an invalid response.", details={"provider": "ocr_space"})
+            if payload.get("IsErroredOnProcessing"):
+                error_message = payload.get("ErrorMessage") or payload.get("ErrorDetails") or "OCR.space processing failed."
+                if isinstance(error_message, list):
+                    error_message = "; ".join(str(item) for item in error_message)
+                raise OCRExecutionError(
+                    message=f"OCR.space processing failed: {error_message}",
+                    details={"provider": "ocr_space"},
+                )
+
+            parsed_results = payload.get("ParsedResults")
+            if not isinstance(parsed_results, list):
+                raise OCRExecutionError(message="OCR.space response did not contain ParsedResults.", details={"provider": "ocr_space"})
+
+            raw_text_parts: List[str] = []
+            detections: List[RawOCRDetection] = []
+            for parsed_result in parsed_results:
+                if not isinstance(parsed_result, dict):
+                    continue
+                parsed_text = str(parsed_result.get("ParsedText") or "")
+                if parsed_text:
+                    raw_text_parts.append(parsed_text)
+                overlay = parsed_result.get("TextOverlay") or {}
+                for line in overlay.get("Lines") or []:
+                    if isinstance(line, dict):
+                        detection = self._line_detection(line)
                         if detection:
                             detections.append(detection)
 
+            raw_text = "\n".join(raw_text_parts).strip()
+            if not raw_text:
+                raise OCRExecutionError(message="OCR.space returned no readable text.", details={"provider": "ocr_space"})
+            if not detections:
+                height, width = image.shape[:2]
+                detections.append(
+                    RawOCRDetection(
+                        polygon=[
+                            (0.0, 0.0),
+                            (float(width), 0.0),
+                            (float(width), float(height)),
+                            (0.0, float(height)),
+                        ],
+                        text=raw_text,
+                        confidence=0.95,
+                    )
+                )
+
             elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
+            logger.info(f"OCR.space text extracted ({len(raw_text)} characters, {len(detections)} regions) in {elapsed_ms}ms.")
             return RawOCRResult(
                 detections=detections,
                 engine_name=self.engine_name,
@@ -164,15 +207,16 @@ class GoogleVisionOCRProvider:
             )
         except OCRExecutionError:
             raise
+        except httpx.TimeoutException as exc:
+            raise OCRExecutionError(message="OCR.space request timed out.", details={"provider": "ocr_space"}) from exc
+        except httpx.HTTPError as exc:
+            raise OCRExecutionError(message="OCR.space network request failed.", details={"provider": "ocr_space"}) from exc
         except Exception as exc:
-            raise OCRExecutionError(
-                message=f"Google Cloud Vision OCR failed: {exc}",
-                details={"provider": "google_vision"},
-            ) from exc
+            raise OCRExecutionError(message=f"OCR.space OCR failed: {exc}", details={"provider": "ocr_space"}) from exc
 
     @property
     def is_ready(self) -> bool:
-        return self._initialized and self._client is not None
+        return self._initialized
 
 
 class OCREngineManager:
@@ -185,7 +229,7 @@ class OCREngineManager:
     _engine = None
     _initialized: bool = False
     _executor: Optional[ThreadPoolExecutor] = None
-    _google_provider: Optional[GoogleVisionOCRProvider] = None
+    _ocr_space_provider: Optional[OCRSpaceProvider] = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -195,7 +239,7 @@ class OCREngineManager:
                 max_workers=settings.NUM_OCR_WORKERS,
                 thread_name_prefix="ocr_worker"
             )
-            cls._instance._google_provider = GoogleVisionOCRProvider()
+            cls._instance._ocr_space_provider = OCRSpaceProvider()
         return cls._instance
 
     @property
@@ -204,7 +248,7 @@ class OCREngineManager:
 
     def _require_supported_provider(self) -> str:
         provider = self.provider_name
-        if provider not in {"google_vision", "paddleocr"}:
+        if provider not in {"ocr_space", "paddleocr"}:
             raise OCRExecutionError(
                 message=f"Unsupported OCR provider: {settings.OCR_PROVIDER}",
                 details={"provider": settings.OCR_PROVIDER},
@@ -217,10 +261,10 @@ class OCREngineManager:
         """
         provider = self._require_supported_provider()
 
-        if provider == "google_vision":
-            if self._google_provider is None:
-                self._google_provider = GoogleVisionOCRProvider()
-            self._google_provider.initialize()
+        if provider == "ocr_space":
+            if self._ocr_space_provider is None:
+                self._ocr_space_provider = OCRSpaceProvider()
+            self._ocr_space_provider.initialize()
             self._initialized = True
             return
 
@@ -279,8 +323,8 @@ class OCREngineManager:
     def is_ready(self) -> bool:
         """Returns True if native PaddleOCR model is loaded in memory."""
         provider = self._require_supported_provider()
-        if provider == "google_vision":
-            return self._google_provider is not None and self._google_provider.is_ready
+        if provider == "ocr_space":
+            return self._ocr_space_provider is not None and self._ocr_space_provider.is_ready
         return self._initialized and self._engine is not None
 
     def process_image(self, image: np.ndarray, lang: str = "en") -> RawOCRResult:
@@ -291,10 +335,10 @@ class OCREngineManager:
         start_time = time.perf_counter()
 
         provider = self._require_supported_provider()
-        if provider == "google_vision":
-            if self._google_provider is None:
-                self._google_provider = GoogleVisionOCRProvider()
-            return self._google_provider.process_image(image)
+        if provider == "ocr_space":
+            if self._ocr_space_provider is None:
+                self._ocr_space_provider = OCRSpaceProvider()
+            return self._ocr_space_provider.process_image(image)
 
         if image is None or image.size == 0:
             raise OCRExecutionError(

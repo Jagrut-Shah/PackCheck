@@ -47,8 +47,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # OCR Engine & Preprocessor defaults
-    # Google Vision is the production/demo provider. PaddleOCR remains opt-in.
-    OCR_PROVIDER: str = "google_vision"
+    # OCR.space is the production/demo provider. PaddleOCR remains opt-in.
+    OCR_PROVIDER: str = "ocr_space"
+    OCR_SPACE_API_KEY: Optional[str] = None
     USE_GPU: bool = False
     PADDLE_OCR_MODEL_VERSION: str = "v2.7.3-PP-OCRv4"
     PADDLE_OCR_LANGUAGES: List[str] = ["en"]

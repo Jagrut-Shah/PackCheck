@@ -1,6 +1,6 @@
 """
 PackCheck AI - Full OCR Pipeline Orchestrator Service.
-Connects image retrieval -> OpenCV preprocessing -> PaddleOCR neural inference -> postprocessing mapping
+Connects image retrieval -> OpenCV preprocessing -> configured OCR provider -> postprocessing mapping
 into a unified, end-to-end, resilient execution pipeline.
 """
 
@@ -37,7 +37,7 @@ class OCRPipelineService:
         Executes the complete 5-stage pipeline:
         1. Fetch image binary & decode to OpenCV Mat
         2. Apply OpenCV downscaling, CLAHE contrast, bilateral denoise, and deskew correction
-        3. Run PaddleOCR text detection & recognition inference
+        3. Run configured OCR provider text detection & recognition inference
         4. Re-project bounding boxes & map raw text to canonical OCRResult schema
         5. Return populated OCRResult response model
         """
@@ -77,8 +77,11 @@ class OCRPipelineService:
             # ----------------------------------------------------------------
             t2 = time.perf_counter()
             lang = request.options.languages[0] if request.options and request.options.languages else "en"
+            # OCR.space receives the original decoded image to avoid changing label detail;
+            # PaddleOCR retains its existing preprocessed input and coordinate scaling.
+            is_ocr_space = self.engine.provider_name == "ocr_space"
             raw_ocr_result = await self.engine.async_process_image(
-                image=prep_result.processed_image,
+                image=image_mat if is_ocr_space else prep_result.processed_image,
                 lang=lang
             )
             inference_time_ms = round((time.perf_counter() - t2) * 1000, 2)
@@ -93,8 +96,8 @@ class OCRPipelineService:
                 raw_ocr_result=raw_ocr_result,
                 inspection_id=request.inspectionId,
                 image_id=request.imageId,
-                scale_x=prep_result.scale_x,
-                scale_y=prep_result.scale_y,
+                scale_x=1.0 if is_ocr_space else prep_result.scale_x,
+                scale_y=1.0 if is_ocr_space else prep_result.scale_y,
                 processing_time_ms=total_pipeline_ms
             )
             map_time_ms = round((time.perf_counter() - t3) * 1000, 2)

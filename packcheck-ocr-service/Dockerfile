@@ -1,6 +1,6 @@
 # ==============================================================================
-# PackCheck AI - Production PaddleOCR Microservice Dockerfile
-# Optimized for Linux container environments (Google Cloud Run / Kubernetes / AWS ECS)
+# PackCheck AI - Production OCR Microservice Dockerfile
+# Optimized for Linux container environments (Render / Kubernetes / AWS ECS)
 # ==============================================================================
 
 FROM python:3.11-slim
@@ -10,7 +10,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=8000 \
     ENVIRONMENT=production \
-    OCR_PROVIDER=google_vision \
+    OCR_PROVIDER=ocr_space \
     ALLOW_LOCAL_FILE_ACCESS=false \
     FLAGS_use_mkldnn=0 \
     PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True \
