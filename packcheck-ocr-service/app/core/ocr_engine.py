@@ -42,6 +42,7 @@ class OCRSpaceProvider:
     engine_name = "OCR.space"
     engine_version = "OCREngine 2"
     endpoint = "https://api.ocr.space/parse/image"
+    max_upload_bytes = 950_000
 
     def __init__(self, client=None):
         self._client = client
@@ -88,8 +89,20 @@ class OCRSpaceProvider:
 
         return RawOCRDetection(polygon=polygon, text=text, confidence=0.95)
 
+    @staticmethod
+    def _scale_detections(
+        detections: List[RawOCRDetection],
+        scale_x: float,
+        scale_y: float,
+    ) -> None:
+        for detection in detections:
+            detection.polygon = [
+                (round(x * scale_x, 1), round(y * scale_y, 1))
+                for x, y in detection.polygon
+            ]
+
     def process_image(self, image: np.ndarray) -> RawOCRResult:
-        """Send a lossless PNG representation to OCR.space and normalize overlays."""
+        """Send a size-bounded JPEG to OCR.space and normalize overlays."""
         start_time = time.perf_counter()
 
         if image is None or image.size == 0:
@@ -102,12 +115,39 @@ class OCRSpaceProvider:
 
         try:
             import cv2
-            encoded_ok, encoded_image = cv2.imencode(".png", image)
+            original_height, original_width = image.shape[:2]
+            upload_image = image
+            encoded_ok, encoded_image = cv2.imencode(
+                ".jpg", upload_image, [int(cv2.IMWRITE_JPEG_QUALITY), 88]
+            )
             if not encoded_ok:
                 raise OCRExecutionError(message="OCR.space could not encode the image.")
 
+            # OCR.space can reject larger payloads with HTTP 413. Reduce only the
+            # provider upload copy; coordinates are mapped back to original pixels.
+            while len(encoded_image) > self.max_upload_bytes:
+                height, width = upload_image.shape[:2]
+                ratio = max(0.5, (self.max_upload_bytes / len(encoded_image)) ** 0.5)
+                resized_width = max(1, int(width * ratio))
+                resized_height = max(1, int(height * ratio))
+                if resized_width == width and resized_height == height:
+                    break
+                upload_image = cv2.resize(
+                    upload_image,
+                    (resized_width, resized_height),
+                    interpolation=cv2.INTER_AREA,
+                )
+                encoded_ok, encoded_image = cv2.imencode(
+                    ".jpg", upload_image, [int(cv2.IMWRITE_JPEG_QUALITY), 88]
+                )
+                if not encoded_ok:
+                    raise OCRExecutionError(message="OCR.space could not encode the image.")
+
+            upload_scale_x = original_width / upload_image.shape[1]
+            upload_scale_y = original_height / upload_image.shape[0]
+
             logger.info("Starting OCR.space request.")
-            files = {"file": ("package.png", encoded_image.tobytes(), "image/png")}
+            files = {"file": ("package.jpg", encoded_image.tobytes(), "image/jpeg")}
             data = {
                 "apikey": settings.OCR_SPACE_API_KEY,
                 "language": "eng",
@@ -182,7 +222,7 @@ class OCRSpaceProvider:
             if not raw_text:
                 raise OCRExecutionError(message="OCR.space returned no readable text.", details={"provider": "ocr_space"})
             if not detections:
-                height, width = image.shape[:2]
+                height, width = original_height, original_width
                 detections.append(
                     RawOCRDetection(
                         polygon=[
@@ -195,6 +235,8 @@ class OCRSpaceProvider:
                         confidence=0.95,
                     )
                 )
+            else:
+                self._scale_detections(detections, upload_scale_x, upload_scale_y)
 
             elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
             logger.info(f"OCR.space text extracted ({len(raw_text)} characters, {len(detections)} regions) in {elapsed_ms}ms.")
