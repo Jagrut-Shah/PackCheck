@@ -141,6 +141,44 @@ export async function processImageOCR(
       elapsedMs,
     });
 
+    if (
+      process.env.NODE_ENV !== "production" &&
+      !ocrServiceUrl.includes("localhost") &&
+      !ocrServiceUrl.includes("127.0.0.1")
+    ) {
+      console.warn(
+        `[OCR_CLIENT_FALLBACK] Primary OCR at ${ocrServiceUrl} failed (HTTP ${response.status}). Attempting local microservice fallback at http://127.0.0.1:8000/ocr...`
+      );
+      try {
+        const localRes = await fetch("http://127.0.0.1:8000/ocr", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": ocrApiKey,
+          },
+          body: JSON.stringify(payload),
+        });
+        if (localRes.ok) {
+          const localData = await localRes.json();
+          console.log(`[OCR_CLIENT_FALLBACK_SUCCESS] Local microservice processed image successfully!`);
+          return {
+            ...localData,
+            id: localData.id || `ocr_${request.imageId}`,
+            inspectionId: localData.inspectionId || request.inspectionId,
+            imageId: localData.imageId || request.imageId,
+            engine: localData.engine || "PaddleOCR",
+            engineVersion: localData.engineVersion || "v2.7.3",
+            rawText: localData.rawText || "",
+            overallConfidence: typeof localData.overallConfidence === "number" ? localData.overallConfidence : 0.9,
+            detectedTextItems: Array.isArray(localData.detectedTextItems) ? localData.detectedTextItems : [],
+            blocks: Array.isArray(localData.blocks) ? localData.blocks : [],
+          };
+        }
+      } catch (fallbackErr) {
+        console.warn(`[OCR_CLIENT_FALLBACK_FAILED] Local microservice unreachable:`, fallbackErr);
+      }
+    }
+
     if (response.status === 504) {
       throw new OcrServiceError(
         `FastAPI timeout (HTTP 504): The OCR microservice timed out during inference: ${errorDetail}`,
