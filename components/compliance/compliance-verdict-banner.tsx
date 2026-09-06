@@ -20,7 +20,7 @@ export const ComplianceVerdictBanner: React.FC<ComplianceVerdictBannerProps> = (
   summaryNotes,
   ruleEngineVersion = "PCR-2011-AMENDED-2024.1",
 }) => {
-  const config = RESULT_CONFIG[verdict];
+  const config = RESULT_CONFIG[verdict] || RESULT_CONFIG.MANUAL_REVIEW;
 
   const getVerdictIcon = () => {
     switch (verdict) {

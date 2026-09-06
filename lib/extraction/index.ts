@@ -10,6 +10,7 @@ import { CONFIDENCE_LEVEL } from "@/lib/types/common";
 import { MOCK_EXTRACTION_AMUL_GHEE, MOCK_EXTRACTION_NUTRIBITE } from "@/mocks/extraction";
 import { parseOCRRawText } from "./parser";
 import { enrichMissingFieldsWithGemini } from "./gemini";
+import { getDailyGeminiUsage } from "./budget";
 
 export interface ExtractionContext {
   productName?: string;
@@ -118,19 +119,20 @@ export async function extractDeclarationsFromOCR(
   ocrResult: OCRResult,
   context?: ExtractionContext
 ): Promise<ExtractedDeclarations> {
+  const rawText = ocrResult?.rawText || "";
   const name = context?.productName?.toLowerCase() || "";
 
-  // Preserve existing demo mock fast-paths
-  if (name.includes("ghee") || name.includes("amul")) {
-    return MOCK_EXTRACTION_AMUL_GHEE;
-  }
-
-  if (name.includes("cookie") || name.includes("nutribite")) {
-    return MOCK_EXTRACTION_NUTRIBITE;
+  // Fall back to legacy demo mocks ONLY if rawText is completely empty
+  if (!rawText) {
+    if (name.includes("ghee") || name.includes("amul")) {
+      return MOCK_EXTRACTION_AMUL_GHEE;
+    }
+    if (name.includes("cookie") || name.includes("nutribite")) {
+      return MOCK_EXTRACTION_NUTRIBITE;
+    }
   }
 
   const baseDeclarations = createDynamicDeclarations(context);
-  const rawText = ocrResult?.rawText || "";
 
   // Step 1: Run deterministic parseOCRRawText FIRST
   const parsed = parseOCRRawText(rawText, context?.productName);
@@ -170,14 +172,23 @@ export async function extractDeclarationsFromOCR(
     return initialDeclarations;
   }
 
-  // Step 4: Call Gemini ONLY for missing/low-confidence fields
-  const geminiEnriched = await enrichMissingFieldsWithGemini(rawText, missingFields, context?.productName);
-
-  if (!geminiEnriched) {
+  // Step 4: Check application budget before calling Gemini
+  const { remaining, count, limit } = getDailyGeminiUsage();
+  if (remaining <= 0) {
+    console.warn(`[Extraction] Gemini enrichment skipped: daily budget exhausted (${count}/${limit} requests used today). Preserving deterministic extraction.`);
+    initialDeclarations.modelUsed = "Deterministic OCR Parser (Gemini skipped: daily budget exhausted)";
     return initialDeclarations;
   }
 
-  // Step 5: Merge validated Gemini values ONLY into missing/low-confidence fields (NEVER overwrite confidence >= 0.5)
+  // Step 5: Call Gemini ONLY for missing/low-confidence fields
+  const geminiEnriched = await enrichMissingFieldsWithGemini(rawText, missingFields, context?.productName);
+
+  if (!geminiEnriched) {
+    initialDeclarations.modelUsed = "Deterministic OCR Parser (Gemini fallback)";
+    return initialDeclarations;
+  }
+
+  // Step 6: Merge validated Gemini values ONLY into missing/low-confidence fields (NEVER overwrite confidence >= 0.5)
   const finalDeclarations: ExtractedDeclarations = { ...initialDeclarations };
 
   if (missingFields.includes("commodityName") && geminiEnriched.commodityName) {
@@ -205,7 +216,7 @@ export async function extractDeclarationsFromOCR(
     finalDeclarations.unitSalePrice = geminiEnriched.unitSalePrice;
   }
 
-  finalDeclarations.modelUsed = "Deterministic OCR Parser + Gemini AI 2.5 Flash Hybrid";
+  finalDeclarations.modelUsed = "Deterministic OCR Parser + Gemini AI 3.8 Flash Hybrid";
 
   return finalDeclarations;
 }

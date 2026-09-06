@@ -23,6 +23,7 @@ import { ExtractionContext } from "@/lib/extraction";
 import { ComplianceEvaluation, ComplianceRuleResult } from "@/lib/types/compliance";
 import { InspectionImage } from "@/lib/types/image";
 import { Finding } from "@/lib/types/finding";
+import { OCRResult } from "@/lib/types/ocr";
 import { apiClient, ApiClientError } from "./client";
 import { getCurrentUser } from "@/lib/auth";
 import { MOCK_INSPECTIONS } from "@/mocks/inspections";
@@ -62,14 +63,24 @@ export interface BackendComplianceFindingInput {
   message: string;
 }
 
+export interface BackendEvaluatedRuleInput {
+  rule_id: string;
+  rule_name: string;
+  result: string;
+  explanation?: string;
+}
+
 export interface BackendComplianceResultsRequest {
   status: "PASS" | "FAIL" | "MANUAL_REVIEW";
   findings: BackendComplianceFindingInput[];
+  evaluated_rules?: BackendEvaluatedRuleInput[];
 }
 
 interface BackendHistoryItem {
   inspection_id: string;
   product_type: string;
+  company_id?: string;
+  company_name?: string;
   status: string;
   violation_count: number;
   created_at: string;
@@ -88,6 +99,14 @@ interface BackendInspectionDetail {
   product_type: string;
   image_url: string;
   image_path: string;
+  images?: Array<{
+    id?: string;
+    image_url?: string;
+    image_path?: string;
+    image_type?: string;
+    file_size?: number;
+    created_at?: string;
+  }>;
   status: string;
   created_at: string;
   updated_at: string;
@@ -150,8 +169,11 @@ function normalizeBackendStatus(statusStr: string): InspectionStatus {
   const upper = (statusStr || "").toUpperCase();
   if (upper === "COMPLETED") return INSPECTION_STATUS.COMPLETED;
   if (upper === "REVIEWING" || upper === "MANUAL_REVIEW") return INSPECTION_STATUS.MANUAL_REVIEW;
-  if (upper === "PENDING" || upper === "PROCESSING") return INSPECTION_STATUS.PROCESSING;
-  return INSPECTION_STATUS.DRAFT;
+  if (upper === "PROCESSING") return INSPECTION_STATUS.PROCESSING;
+  if (upper === "PENDING") return INSPECTION_STATUS.PENDING;
+  if (upper === "FAILED") return INSPECTION_STATUS.FAILED;
+  if (upper === "DRAFT") return INSPECTION_STATUS.DRAFT;
+  return (statusStr as InspectionStatus) || INSPECTION_STATUS.DRAFT;
 }
 
 /**
@@ -173,7 +195,7 @@ function mapHistoryItemToInspectionRecord(item: BackendHistoryItem): InspectionR
   return {
     id: item.inspection_id,
     inspectionNumber: `INS-${shortId}`,
-    company: "", // Backend schema does not yet support company column
+    company: item.company_name || "",
     product: item.product_type || "Unspecified Commodity",
     productCategory: "GENERAL_COMMODITY",
     inspectionDate: dateStr,
@@ -197,6 +219,7 @@ function mapHistoryItemToInspectionRecord(item: BackendHistoryItem): InspectionR
     commodity: {
       commodityName: item.product_type || "Unspecified Commodity",
       category: "GENERAL_COMMODITY",
+      manufacturerName: item.company_name || "",
     },
     ocrResults: [],
   };
@@ -615,9 +638,17 @@ export function serializeComplianceToBackend(
       };
     });
 
+  const evaluated_rules: BackendEvaluatedRuleInput[] = (evaluation.results || []).map((r) => ({
+    rule_id: r.ruleId,
+    rule_name: r.ruleTitle || r.ruleNumber || r.ruleId,
+    result: r.result,
+    explanation: r.explanation,
+  }));
+
   return {
     status: backendStatus,
     findings,
+    evaluated_rules,
   };
 }
 
@@ -630,27 +661,46 @@ function mapDetailToInspectionRecord(detail: BackendInspectionDetail): Inspectio
   const status = normalizeBackendStatus(detail.status);
   const overallResult = detail.final_result ? toFrontendOverallResult(detail.final_result.status) : undefined;
 
-  const images: InspectionImage[] = detail.image_url
-    ? [
-        {
-          id: detail.image_path || `img_${detail.id}`,
+  const images: InspectionImage[] =
+    detail.images && detail.images.length > 0
+      ? detail.images.map((img) => ({
+          id: img.id || img.image_path || `img_${detail.id}`,
           inspectionId: detail.id,
-          filename: detail.image_path?.split("/").pop() || "product_image.jpg",
-          fileName: detail.image_path?.split("/").pop() || "product_image.jpg",
-          storagePath: detail.image_path,
-          url: detail.image_url,
-          imageType: "PRINCIPAL_DISPLAY_PANEL",
+          filename: img.image_path?.split("/").pop() || "product_image.jpg",
+          fileName: img.image_path?.split("/").pop() || "product_image.jpg",
+          storagePath: img.image_path || "",
+          url: img.image_url || "",
+          imageType: (img.image_type as any) || "PRINCIPAL_DISPLAY_PANEL",
           angle: "PRINCIPAL_DISPLAY_PANEL",
-          fileSize: 0,
-          fileSizeBytes: 0,
+          fileSize: img.file_size || 0,
+          fileSizeBytes: img.file_size || 0,
           mimeType: "image/jpeg",
           qualityStatus: "PASSED",
           qualityScore: 1,
           qualityMetrics: { blur: 1, brightness: 1, glare: 1, resolution: 1, readability: 1 },
-          uploadedAt: dateStr,
-        },
-      ]
-    : [];
+          uploadedAt: img.created_at || dateStr,
+        }))
+      : detail.image_url
+      ? [
+          {
+            id: detail.image_path || `img_${detail.id}`,
+            inspectionId: detail.id,
+            filename: detail.image_path?.split("/").pop() || "product_image.jpg",
+            fileName: detail.image_path?.split("/").pop() || "product_image.jpg",
+            storagePath: detail.image_path,
+            url: detail.image_url,
+            imageType: "PRINCIPAL_DISPLAY_PANEL",
+            angle: "PRINCIPAL_DISPLAY_PANEL",
+            fileSize: 0,
+            fileSizeBytes: 0,
+            mimeType: "image/jpeg",
+            qualityStatus: "PASSED",
+            qualityScore: 1,
+            qualityMetrics: { blur: 1, brightness: 1, glare: 1, resolution: 1, readability: 1 },
+            uploadedAt: dateStr,
+          },
+        ]
+      : [];
 
   const findings: Finding[] = (detail.findings || []).map((f) =>
     mapBackendFindingToCanonical(f, detail.id, detail.image_path, dateStr)
@@ -793,6 +843,12 @@ export async function createInspection(
   const formData = new FormData();
   formData.append("product_type", input.commodityName || input.category || "General");
   formData.append("inspector_id", currentUser.id);
+  if (input.manufacturerName) {
+    formData.append("manufacturer_name", input.manufacturerName);
+  }
+  if (input.brandName) {
+    formData.append("brand_name", input.brandName);
+  }
 
   if (files && files.length > 0) {
     for (const f of files) {
@@ -862,23 +918,47 @@ export async function createInspection(
 }
 
 /**
- * Update inspection status or compliance verdict (retained for subsequent compliance step)
+ * Update inspection status or compliance verdict
  */
 export async function updateInspectionStatus(
   id: string,
-  status: InspectionStatus,
+  status: InspectionStatus | string,
   result?: OverallResult
-): Promise<InspectionRecord> {
+): Promise<InspectionRecord | null> {
+  try {
+    await apiClient.patch<{ id: string; status: string }>(
+      `/api/inspections/${id}`,
+      { status }
+    );
+  } catch (err) {
+    console.warn("Could not patch inspection status to backend:", err);
+  }
   const existing = await getInspectionById(id);
   if (!existing) {
-    throw new Error(`Inspection not found: ${id}`);
+    return null;
   }
   return {
     ...existing,
-    status,
+    status: status as InspectionStatus,
     overallResult: result ?? existing.overallResult,
     updatedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Executes OCR pipeline on the server via POST /api/inspections/[id]/ocr.
+ * Communicates with PaddleOCR microservice and returns structured OCR text & coordinates.
+ */
+export async function runServerOCR(
+  inspectionId: string,
+  imageLocation?: string
+): Promise<OCRResult> {
+  return await apiClient.post<OCRResult>(
+    `/api/inspections/${inspectionId}/ocr`,
+    {
+      imageLocation,
+    }
+  );
 }
 
 /**

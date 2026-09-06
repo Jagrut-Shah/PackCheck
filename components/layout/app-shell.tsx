@@ -85,22 +85,13 @@ function getDefaultNavigationMeta(pathname: string): {
       title: "Rule Performance & Penalties",
     };
   }
-  if (pathname.startsWith("/profile")) {
+  if (pathname.startsWith("/profile") || pathname.startsWith("/settings")) {
     return {
       breadcrumbItems: [
         { label: "Inspection Portal", href: "/dashboard" },
         { label: "Officer Profile" },
       ],
-      title: "Officer Profile & Clearances",
-    };
-  }
-  if (pathname.startsWith("/settings")) {
-    return {
-      breadcrumbItems: [
-        { label: "Inspection Portal", href: "/dashboard" },
-        { label: "System Settings" },
-      ],
-      title: "System & Enforcement Settings",
+      title: "Officer Profile",
     };
   }
 

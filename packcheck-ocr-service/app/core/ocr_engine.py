@@ -68,22 +68,44 @@ class OCREngineManager:
         )
 
         try:
+            # Set environment flags to prevent hoster check stalls
+            os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
+
+            # Apply safe predictor patch to prevent Windows PIR oneDNN instruction error on Windows only
+            import sys
+            if sys.platform == "win32":
+                try:
+                    import paddle.inference as pi
+                    orig_create_predictor = pi.create_predictor
+                    def safe_create_predictor(config):
+                        if hasattr(config, "disable_onednn"):
+                            config.disable_onednn()
+                        if hasattr(config, "disable_mkldnn"):
+                            config.disable_mkldnn()
+                        return orig_create_predictor(config)
+                    pi.create_predictor = safe_create_predictor
+                except Exception as patch_exc:
+                    logger.debug(f"Paddlex runner predictor patch note: {patch_exc}")
+
             from paddleocr import PaddleOCR
             self._engine = PaddleOCR(
-                use_angle_cls=True,
+                ocr_version="PP-OCRv4",
                 lang=lang,
-                use_gpu=use_gpu,
-                show_log=False
+                use_textline_orientation=True
             )
             self._initialized = True
             elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
             logger.info(f"PaddleOCR engine successfully initialized in {elapsed_ms}ms.")
         except Exception as exc:
-            logger.warning(
-                f"Native PaddleOCR engine failed to initialize ({str(exc)}). Operating in fallback detection mode."
+            logger.error(
+                f"Native PaddleOCR engine failed to initialize: {str(exc)}"
             )
             self._engine = None
             self._initialized = False
+            raise OCRExecutionError(
+                message=f"PaddleOCR failed to initialize: {str(exc)}",
+                details={"error": str(exc)}
+            )
 
     def is_ready(self) -> bool:
         """Returns True if native PaddleOCR model is loaded in memory."""
@@ -102,33 +124,62 @@ class OCREngineManager:
             )
 
         if not self._initialized or self._engine is None:
-            # Fallback mock detector for lightweight CI/CD or uninitialized runtime
-            return self._mock_fallback_detection(image, start_time)
+            raise OCRExecutionError(
+                message="PaddleOCR engine is not initialized. Synthetic fallback is disabled."
+            )
 
         try:
-            # Execute PaddleOCR inference
-            ocr_output = self._engine.ocr(image, cls=True)
+            # Execute real PaddleOCR inference
+            raw_output = self._engine.predict(image)
             elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
             detections: List[RawOCRDetection] = []
 
-            # Handle case where no text is detected (ocr_output is None or [None])
-            if ocr_output and len(ocr_output) > 0 and ocr_output[0] is not None:
-                for line in ocr_output[0]:
-                    polygon_coords_raw, (text_str, conf_score) = line
+            # Handle PaddleOCR 3.x dict format and classic list format
+            for page in (raw_output or []):
+                if isinstance(page, dict):
+                    rec_texts = page.get("rec_texts", [])
+                    rec_scores = page.get("rec_scores", [])
+                    rec_polys = page.get("rec_polys", [])
 
-                    # Format polygon coordinates as list of float tuples [(x1,y1), (x2,y2), ...]
-                    polygon: List[Tuple[float, float]] = [
-                        (float(pt[0]), float(pt[1])) for pt in polygon_coords_raw
-                    ]
+                    for idx, text in enumerate(rec_texts):
+                        clean_text = str(text).strip()
+                        if not clean_text:
+                            continue
+                        score = float(rec_scores[idx]) if idx < len(rec_scores) else 0.95
+                        poly = rec_polys[idx] if idx < len(rec_polys) else None
+                        if poly is not None and hasattr(poly, "tolist"):
+                            poly_list = [(float(pt[0]), float(pt[1])) for pt in poly.tolist()]
+                        elif isinstance(poly, (list, tuple)):
+                            poly_list = [(float(pt[0]), float(pt[1])) for pt in poly]
+                        else:
+                            h, w = image.shape[:2]
+                            poly_list = [(0.0, 0.0), (float(w), 0.0), (float(w), float(h)), (0.0, float(h))]
 
-                    detections.append(
-                        RawOCRDetection(
-                            polygon=polygon,
-                            text=str(text_str).strip(),
-                            confidence=round(float(conf_score), 4)
+                        detections.append(
+                            RawOCRDetection(
+                                polygon=poly_list,
+                                text=clean_text,
+                                confidence=round(score, 4)
+                            )
                         )
-                    )
+                elif isinstance(page, (list, tuple)):
+                    for line in page:
+                        if line and len(line) == 2:
+                            polygon_raw, text_info = line
+                            text_str = text_info[0] if isinstance(text_info, (list, tuple)) else str(text_info)
+                            clean_text = str(text_str).strip()
+                            if not clean_text:
+                                continue
+                            conf_score = text_info[1] if isinstance(text_info, (list, tuple)) and len(text_info) > 1 else 0.95
+                            polygon = [(float(pt[0]), float(pt[1])) for pt in polygon_raw]
+                            detections.append(
+                                RawOCRDetection(
+                                    polygon=polygon,
+                                    text=clean_text,
+                                    confidence=round(float(conf_score), 4)
+                                )
+                            )
 
             logger.info(
                 f"PaddleOCR processed image ({image.shape[1]}x{image.shape[0]}) -> detected {len(detections)} text items in {elapsed_ms}ms",
@@ -143,7 +194,7 @@ class OCREngineManager:
             return RawOCRResult(
                 detections=detections,
                 engine_name="PaddleOCR",
-                engine_version=settings.PADDLE_OCR_MODEL_VERSION,
+                engine_version="PP-OCRv4",
                 inference_time_ms=elapsed_ms
             )
 

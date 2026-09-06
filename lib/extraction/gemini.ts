@@ -9,6 +9,7 @@ import { GoogleGenAI } from "@google/genai";
 import { CONFIDENCE_LEVEL } from "@/lib/types/common";
 import { ExtractedDeclarations } from "@/lib/types/extraction";
 import { zodPartialDeclarationsSchema, ZodPartialDeclarations } from "./schemas";
+import { canExecuteGeminiRequest, recordGeminiRequest } from "./budget";
 
 /**
  * Gets server-side Gemini API key without exposing to client bundles.
@@ -21,6 +22,7 @@ function getApiKey(): string | undefined {
 /**
  * Enriches missing or low-confidence statutory fields using Gemini AI.
  * Called ONLY when missing/low-confidence fields are detected and an API key is configured.
+ * Strictly respects the 20 requests/calendar day application budget.
  */
 export async function enrichMissingFieldsWithGemini(
   rawText: string,
@@ -29,6 +31,12 @@ export async function enrichMissingFieldsWithGemini(
 ): Promise<Partial<ExtractedDeclarations> | null> {
   const apiKey = getApiKey();
   if (!apiKey || !rawText || missingFields.length === 0) {
+    return null;
+  }
+
+  // Pre-check budget before any network attempt
+  if (!canExecuteGeminiRequest()) {
+    console.warn("[Gemini Budget] Daily limit of 20 requests/calendar day reached. Skipping Gemini call to maintain zero-billing guarantee.");
     return null;
   }
 
@@ -57,13 +65,57 @@ Return ONLY a valid JSON object strictly adhering to this schema structure (do n
   "unitSalePrice": { "amountInRupees": number, "unit": string, "rawText": string, "isDeclared": boolean } or null
 }`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
+    const modelName = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+    let response;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      // Check budget before each actual generation call (including retries)
+      if (!canExecuteGeminiRequest()) {
+        console.warn(`[Gemini Budget] Daily limit reached before attempt ${attempt + 1}. Aborting further retries.`);
+        break;
+      }
+
+      // Record this actual attempt against the daily budget
+      const permitted = recordGeminiRequest();
+      if (!permitted) {
+        console.warn(`[Gemini Budget] Daily budget exhausted. Halting request.`);
+        break;
+      }
+
+      try {
+        response = await ai.models.generateContent({
+          model: modelName,
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+          },
+        });
+        if (response?.text) break;
+      } catch (err: unknown) {
+        lastError = err;
+        const errAny = err as { status?: number; code?: number; message?: string };
+        const status = errAny?.status || errAny?.code;
+        const isTransient =
+          status === 503 ||
+          status === 429 ||
+          Boolean(errAny?.message && (errAny.message.includes("503") || errAny.message.includes("429") || errAny.message.includes("high demand") || errAny.message.includes("quota")));
+        
+        console.warn(`[Gemini Request Warning] Attempt ${attempt + 1} encountered error (status: ${status}): ${errAny?.message || "Transient error"}`);
+
+        if (isTransient && attempt < 2 && canExecuteGeminiRequest()) {
+          const delayMs = (attempt + 1) * 2000;
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+        // If not retryable or retries exhausted, don't crash
+        break;
+      }
+    }
+
+    if (!response || !response.text) {
+      console.warn("[Gemini Fallback] No response received from Gemini API, gracefully falling back to deterministic extraction.", lastError ? (lastError as Error).message : "");
+      return null;
+    }
 
     const text = response.text;
     if (!text) return null;
@@ -90,7 +142,7 @@ Return ONLY a valid JSON object strictly adhering to this schema structure (do n
         value: {
           name: validated.manufacturerOrPacker.name || "",
           address: validated.manufacturerOrPacker.address || "",
-          pincode: validated.manufacturerOrPacker.pincode,
+          pincode: validated.manufacturerOrPacker.pincode || undefined,
           role: validated.manufacturerOrPacker.role || "MANUFACTURER",
           rawText:
             validated.manufacturerOrPacker.rawText ||
@@ -162,8 +214,8 @@ Return ONLY a valid JSON object strictly adhering to this schema structure (do n
       enriched.consumerCare = {
         field: "consumerCare",
         value: {
-          telephoneOrMobile: validated.consumerCare?.telephoneOrMobile,
-          email: validated.consumerCare?.email,
+          telephoneOrMobile: validated.consumerCare?.telephoneOrMobile || undefined,
+          email: validated.consumerCare?.email || undefined,
           rawText:
             validated.consumerCare?.rawText ||
             [validated.consumerCare?.telephoneOrMobile, validated.consumerCare?.email].filter(Boolean).join(" "),

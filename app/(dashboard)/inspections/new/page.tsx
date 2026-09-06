@@ -21,7 +21,6 @@ export default function NewInspectionPage() {
 
   // Form State 
   const [commodityName, setCommodityName] = useState("");
-  const [brandName, setBrandName] = useState("");
   const [manufacturerName, setManufacturerName] = useState("");
   const [category, setCategory] = useState<CommodityCategory>("FOOD_AND_BEVERAGES");
   const [inspectionDate, setInspectionDate] = useState(
@@ -86,7 +85,6 @@ export default function NewInspectionPage() {
       const newInspection = await createInspection(
         {
           commodityName: commodityName.trim(),
-          brandName: brandName.trim() || undefined,
           category,
           manufacturerName: manufacturerName.trim() || undefined,
           location: location.trim(),
@@ -149,7 +147,7 @@ export default function NewInspectionPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="font-semibold text-[#0F172A]">
-                  Product / Commodity Name *
+                  Commodity Name *
                 </label>
                 <Input
                   required
@@ -162,33 +160,7 @@ export default function NewInspectionPage() {
 
               <div className="space-y-1">
                 <label className="font-semibold text-[#0F172A]">
-                  Brand / Trade Name
-                </label>
-                <Input
-                  placeholder="e.g. Amul"
-                  value={brandName}
-                  onChange={(e) => setBrandName(e.target.value)}
-                  className="text-xs h-8"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="font-semibold text-[#0F172A]">
-                  Company / Manufacturer / Pre-Packer
-                </label>
-                <Input
-                  placeholder="e.g. Kaira District Co-operative Milk Producers' Union Ltd."
-                  value={manufacturerName}
-                  onChange={(e) => setManufacturerName(e.target.value)}
-                  className="text-xs h-8"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-semibold text-[#0F172A]">
-                  Product Category
+                  Commodity Category
                 </label>
                 <select
                   value={category}
@@ -207,7 +179,37 @@ export default function NewInspectionPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="font-semibold text-[#0F172A]">
+                  Company / Manufacturer / Pre-Packer
+                </label>
+                <Input
+                  placeholder="e.g. Kaira District Co-operative Milk Producers' Union Ltd."
+                  value={manufacturerName}
+                  onChange={(e) => setManufacturerName(e.target.value)}
+                  className="text-xs h-8"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-[#0F172A]">
+                  Inspection Type
+                </label>
+                <select
+                  value={inspectionType}
+                  onChange={(e) => setInspectionType(e.target.value)}
+                  className="w-full h-8 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-colors"
+                >
+                  <option value="ROUTINE_MARKET_SURVEILLANCE">Routine Market Surveillance</option>
+                  <option value="CONSUMER_GRIEVANCE_AUDIT">Consumer Grievance Investigation</option>
+                  <option value="FACTORY_PRE_PACK_INSPECTION">Factory Pre-Pack Inspection</option>
+                  <option value="CUSTOMS_IMPORT_CLEARANCE">Customs Import Clearance</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="font-semibold text-[#0F172A]">
                   Inspection Date
@@ -229,22 +231,6 @@ export default function NewInspectionPage() {
                   onChange={(e) => setLocation(e.target.value)}
                   className="text-xs h-8"
                 />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-semibold text-[#0F172A]">
-                  Inspection Type
-                </label>
-                <select
-                  value={inspectionType}
-                  onChange={(e) => setInspectionType(e.target.value)}
-                  className="w-full h-8 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-colors"
-                >
-                  <option value="ROUTINE_MARKET_SURVEILLANCE">Routine Market Surveillance</option>
-                  <option value="CONSUMER_GRIEVANCE_AUDIT">Consumer Grievance Investigation</option>
-                  <option value="FACTORY_PRE_PACK_INSPECTION">Factory Pre-Pack Inspection</option>
-                  <option value="CUSTOMS_IMPORT_CLEARANCE">Customs Import Clearance</option>
-                </select>
               </div>
             </div>
           </CardContent>

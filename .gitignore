@@ -46,3 +46,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Local scratch and budget state
+.gemini_budget.json
+.data/
+scratch/
+scratch_*.png
+scripts/
+
+

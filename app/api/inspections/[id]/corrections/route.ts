@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { ApiResponse } from '@/lib/types/common'
+import { recordActivityEvent } from '@/lib/events/activity-event'
 
 interface CorrectionInput {
   field_name: string
@@ -72,7 +73,7 @@ export async function POST(
     // Verify inspection exists
     const { data: inspection, error: inspectionError } = await supabase
       .from('inspections')
-      .select('id')
+      .select('id, product_type, inspector_id')
       .eq('id', inspectionId)
       .single()
 
@@ -115,6 +116,36 @@ export async function POST(
         } as ApiResponse<null>,
         { status: 500 }
       )
+    }
+
+    // Record FIELD_CORRECTED events
+    try {
+      for (const item of body.corrections) {
+        await recordActivityEvent({
+          action: "FIELD_CORRECTED",
+          actionLabel: "Field Correction Overridden",
+          inspectionId,
+          commodityName: inspection.product_type || "Packaged Commodity",
+          actorId: inspection.inspector_id || "officer_enforcement",
+          actorName: "Legal Metrology Inspector",
+          category: "USER_ACTION",
+          details: `Inspector manually verified declaration '${item.field_name}': altered value from '${item.original_value || "null"}' to '${item.corrected_value}'.`,
+          notification: {
+            targetUserId: inspection.inspector_id || "all",
+            type: "REVIEW",
+            title: "Field Declaration Overridden",
+            message: `Declaration '${item.field_name}' overridden to '${item.corrected_value}' for ${inspectionId.slice(0, 8).toUpperCase()}.`,
+            actionUrl: `/inspections/${inspectionId}/review`,
+          },
+          metadata: {
+            field_name: item.field_name,
+            original_value: item.original_value,
+            corrected_value: item.corrected_value,
+          },
+        });
+      }
+    } catch (eventErr) {
+      console.warn("Non-blocking activity event recording error:", eventErr);
     }
 
     return NextResponse.json(

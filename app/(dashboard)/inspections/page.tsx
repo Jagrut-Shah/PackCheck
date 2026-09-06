@@ -56,7 +56,6 @@ export default function InspectionsPage() {
       (item.inspectionNumber || "").toLowerCase().includes(q) ||
       (item.product || "").toLowerCase().includes(q) ||
       (item.commodity?.commodityName && item.commodity.commodityName.toLowerCase().includes(q)) ||
-      (item.commodity?.brandName && item.commodity.brandName.toLowerCase().includes(q)) ||
       (item.company && item.company.toLowerCase().includes(q)) ||
       (item.commodity?.manufacturerName && item.commodity.manufacturerName.toLowerCase().includes(q));
 
@@ -89,7 +88,7 @@ export default function InspectionsPage() {
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-[#94A3B8]" />
           <Input
-            placeholder="Search by commodity, brand, company or inspection number..."
+            placeholder="Search by commodity, company, or inspection number..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-8 text-xs h-8 bg-[#F8FAFC] border-[#E2E8F0] focus:bg-white"
@@ -121,7 +120,9 @@ export default function InspectionsPage() {
             <option value="COMPLETED">Completed</option>
             <option value="MANUAL_REVIEW">Manual Review</option>
             <option value="PROCESSING">Processing</option>
+            <option value="PENDING">Pending</option>
             <option value="DRAFT">Draft</option>
+            <option value="FAILED">Failed</option>
           </select>
 
           {/* Verdict Filter */}
@@ -145,10 +146,9 @@ export default function InspectionsPage() {
             <TableHeader>
               <TableRow className="border-[#E2E8F0] bg-[#F8FAFC]">
                 <TableHead className="text-[11px] font-semibold text-[#475569]">INSPECTION</TableHead>
-                <TableHead className="text-[11px] font-semibold text-[#475569]">COMPANY</TableHead>
-                <TableHead className="text-[11px] font-semibold text-[#475569]">PRODUCT</TableHead>
+                <TableHead className="text-[11px] font-semibold text-[#475569]">MANUFACTURER / PACKER</TableHead>
+                <TableHead className="text-[11px] font-semibold text-[#475569]">COMMODITY</TableHead>
                 <TableHead className="text-[11px] font-semibold text-[#475569]">DATE</TableHead>
-                <TableHead className="text-[11px] font-semibold text-[#475569]">INSPECTOR</TableHead>
                 <TableHead className="text-[11px] font-semibold text-[#475569]">RESULT</TableHead>
                 <TableHead className="text-[11px] font-semibold text-[#475569]">STATUS</TableHead>
                 <TableHead className="text-[11px] font-semibold text-[#475569] text-right">ACTION</TableHead>
@@ -157,13 +157,13 @@ export default function InspectionsPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-36 text-center text-xs text-[#475569]">
+                  <TableCell colSpan={7} className="h-36 text-center text-xs text-[#475569]">
                     Loading statutory inspection records...
                   </TableCell>
                 </TableRow>
               ) : errorMessage ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-36 text-center text-xs text-[#DC2626]">
+                  <TableCell colSpan={7} className="h-36 text-center text-xs text-[#DC2626]">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <AlertCircle className="size-6 text-[#DC2626]" />
                       <p className="font-semibold">{errorMessage}</p>
@@ -175,7 +175,7 @@ export default function InspectionsPage() {
                 </TableRow>
               ) : filteredInspections.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-36 text-center text-xs text-[#475569]">
+                  <TableCell colSpan={7} className="h-36 text-center text-xs text-[#475569]">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <AlertCircle className="size-6 text-[#94A3B8]" />
                       <p className="font-medium">No inspection records match the active filter criteria.</p>
@@ -208,10 +208,7 @@ export default function InspectionsPage() {
                       {item.company || item.commodity?.manufacturerName || "—"}
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-xs text-[#0F172A]">{item.product || item.commodity?.commodityName}</span>
-                        <span className="text-[11px] text-[#475569]">{item.commodity?.brandName ?? "—"}</span>
-                      </div>
+                      <span className="font-semibold text-xs text-[#0F172A]">{item.product || item.commodity?.commodityName}</span>
                     </TableCell>
                     <TableCell className="text-xs text-[#475569] whitespace-nowrap">
                       {new Date(item.inspectionDate || item.createdAt).toLocaleDateString("en-IN", {
@@ -219,9 +216,6 @@ export default function InspectionsPage() {
                         month: "short",
                         year: "numeric",
                       })}
-                    </TableCell>
-                    <TableCell className="text-xs text-[#475569]">
-                      {item.inspector || item.inspectorName}
                     </TableCell>
                     <TableCell>
                       {item.overallResult ? (

@@ -11,7 +11,6 @@ import {
   MoreVertical,
   Download,
   AlertTriangle,
-  Info,
   CheckCircle2,
   ArrowRight,
   FileSpreadsheet,
@@ -61,7 +60,7 @@ export function DashboardView() {
     loadDashboardData();
   }, []);
 
-  // Filter inspections for table
+  // Filter inspections for table and limit to 10 most recent
   const filteredRecords = inspections.filter(
     (record) =>
       (record.product || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -70,6 +69,7 @@ export function DashboardView() {
       (record.company && record.company.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (record.inspectionNumber || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const recentRecords = filteredRecords.slice(0, 10);
 
   // Items needing immediate attention (manual reviews & potential non-compliances)
   const attentionRecords = inspections.filter(
@@ -84,7 +84,6 @@ export function DashboardView() {
       {/* Quiet Dashboard Header */}
       <PageHeader
         title="Inspector Dashboard"
-        description="Legal Metrology (Packaged Commodities) Rules, 2011 compliance verification & audit oversight."
         actions={
           <div className="flex items-center gap-2">
             <Link href="/reports">
@@ -223,13 +222,6 @@ export function DashboardView() {
         </div>
       )}
 
-      {/* Regulatory Guidance Strip */}
-      <div className="flex items-center gap-3 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] p-3.5 px-4 text-xs text-[#0F172A]">
-        <Info className="size-4 text-[#1D4ED8] shrink-0" aria-hidden="true" />
-        <p className="flex-1 leading-relaxed">
-          <span className="font-semibold text-[#0F172A]">Legal Metrology (Packaged Commodities) Rules, 2011:</span> Every packaged commodity must bear statutory declarations including Manufacturer/Packer Name & Address, Net Quantity, Country of Origin, and Maximum Retail Price (MRP inclusive of all taxes).
-        </p>
-      </div>
 
       {/* Operational Inspections Table Surface */}
       <div className="flex flex-col gap-3 rounded-xl border border-[#E2E8F0] bg-white p-5 shadow-2xs">
@@ -267,7 +259,7 @@ export function DashboardView() {
             <TableHeader>
               <TableRow className="border-[#E2E8F0] bg-[#F8FAFC]">
                 <TableHead className="text-[11px] font-semibold text-[#475569]">INSPECTION NO</TableHead>
-                <TableHead className="text-[11px] font-semibold text-[#475569]">COMMODITY & BRAND</TableHead>
+                <TableHead className="text-[11px] font-semibold text-[#475569]">COMMODITY</TableHead>
                 <TableHead className="text-[11px] font-semibold text-[#475569]">MANUFACTURER / PACKER</TableHead>
                 <TableHead className="text-[11px] font-semibold text-[#475569]">STATUS</TableHead>
                 <TableHead className="text-[11px] font-semibold text-[#475569]">VERDICT</TableHead>
@@ -283,14 +275,14 @@ export function DashboardView() {
                     Loading inspection records...
                   </TableCell>
                 </TableRow>
-              ) : filteredRecords.length === 0 ? (
+              ) : recentRecords.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="h-32 text-center text-xs text-[#475569]">
                     No inspection records found matching &quot;{searchQuery}&quot;.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredRecords.map((record) => (
+                recentRecords.map((record) => (
                   <TableRow
                     key={record.id}
                     onClick={() => router.push(`/inspections/${record.id}`)}
@@ -300,14 +292,9 @@ export function DashboardView() {
                       {record.inspectionNumber}
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-xs text-[#0F172A]">
-                          {record.product || record.commodity?.commodityName}
-                        </span>
-                        <span className="text-[11px] text-[#475569]">
-                          {record.commodity?.brandName ?? "—"}
-                        </span>
-                      </div>
+                      <span className="font-semibold text-xs text-[#0F172A]">
+                        {record.commodity?.commodityName || record.product}
+                      </span>
                     </TableCell>
                     <TableCell className="text-xs text-[#475569] max-w-50 truncate">
                       {record.company || record.commodity?.manufacturerName || "—"}

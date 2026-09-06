@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { ApiResponse } from '@/lib/types/common'
 
 interface ReportDataResponse {
@@ -14,6 +14,7 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
+  const db = supabaseAdmin || supabase;
   try {
     const { id: inspectionId } = await context.params
 
@@ -31,7 +32,7 @@ export async function GET(
     }
 
     // Fetch inspection
-    const { data: inspection, error: inspectionError } = await supabase
+    const { data: inspection, error: inspectionError } = await db
       .from('inspections')
       .select('*')
       .eq('id', inspectionId)
@@ -51,7 +52,7 @@ export async function GET(
     }
 
     // Fetch extracted fields
-    const { data: extractedFields, error: fieldsError } = await supabase
+    const { data: extractedFields, error: fieldsError } = await db
       .from('extracted_fields')
       .select('*')
       .eq('inspection_id', inspectionId)
@@ -61,7 +62,7 @@ export async function GET(
     }
 
     // Fetch corrections
-    const { data: corrections, error: correctionsError } = await supabase
+    const { data: corrections, error: correctionsError } = await db
       .from('inspector_corrections')
       .select('*')
       .eq('inspection_id', inspectionId)
@@ -71,7 +72,7 @@ export async function GET(
     }
 
     // Fetch findings
-    const { data: findings, error: findingsError } = await supabase
+    const { data: findings, error: findingsError } = await db
       .from('compliance_findings')
       .select('*')
       .eq('inspection_id', inspectionId)
@@ -81,7 +82,7 @@ export async function GET(
     }
 
     // Fetch final result
-    const { data: finalResult, error: resultError } = await supabase
+    const { data: finalResult, error: resultError } = await db
       .from('final_results')
       .select('*')
       .eq('inspection_id', inspectionId)

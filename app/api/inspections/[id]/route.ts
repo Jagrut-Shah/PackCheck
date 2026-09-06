@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { ApiResponse } from '@/lib/types/common'
+import { recordActivityEvent } from '@/lib/events/activity-event'
+import { getInspectionCompanyLink } from '@/lib/companies/storage'
 
 interface InspectionDetailResponse {
   id: string
   inspector_id: string
   product_type: string
+  company_id?: string
+  company_name?: string
   image_url: string
   image_path: string
+  images?: any[]
   status: string
   created_at: string
   updated_at: string
@@ -21,6 +26,7 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
+  const db = supabaseAdmin || supabase;
   try {
     const { id: inspectionId } = await context.params
 
@@ -38,7 +44,7 @@ export async function GET(
     }
 
     // Fetch inspection record
-    const { data: inspection, error: inspectionError } = await supabase
+    const { data: inspection, error: inspectionError } = await db
       .from('inspections')
       .select('*')
       .eq('id', inspectionId)
@@ -57,36 +63,52 @@ export async function GET(
       )
     }
 
-    // Fetch related data in parallel
-    const [fieldsRes, correctionsRes, findingsRes, finalResultRes] = await Promise.all([
-      supabase
+    // Fetch related data in parallel including real uploaded images
+    const [fieldsRes, correctionsRes, findingsRes, finalResultRes, imagesRes] = await Promise.all([
+      db
         .from('extracted_fields')
         .select('*')
         .eq('inspection_id', inspectionId)
         .order('created_at', { ascending: true }),
-      supabase
+      db
         .from('inspector_corrections')
         .select('*')
         .eq('inspection_id', inspectionId)
         .order('timestamp', { ascending: true }),
-      supabase
+      db
         .from('compliance_findings')
         .select('*')
         .eq('inspection_id', inspectionId)
         .order('created_at', { ascending: true }),
-      supabase
+      db
         .from('final_results')
         .select('*')
         .eq('inspection_id', inspectionId)
-        .maybeSingle()
+        .maybeSingle(),
+      db
+        .from('inspection_images')
+        .select('*')
+        .eq('inspection_id', inspectionId)
+        .order('created_at', { ascending: false })
     ])
+
+    const localLink = getInspectionCompanyLink(inspectionId);
+    const companyId = inspection.company_id || localLink?.companyId;
+    const companyName = inspection.company_name || localLink?.companyName;
+
+    const primaryImage = imagesRes.data?.[0];
+    const imageUrl = primaryImage?.image_url || inspection.image_url || '';
+    const imagePath = primaryImage?.image_path || inspection.image_path || '';
 
     const inspectionData: InspectionDetailResponse = {
       id: inspection.id,
       inspector_id: inspection.inspector_id,
       product_type: inspection.product_type,
-      image_url: inspection.image_url,
-      image_path: inspection.image_path,
+      company_id: companyId,
+      company_name: companyName,
+      image_url: imageUrl,
+      image_path: imagePath,
+      images: imagesRes.data || [],
       status: inspection.status,
       created_at: inspection.created_at,
       updated_at: inspection.updated_at,
@@ -116,5 +138,94 @@ export async function GET(
       } as ApiResponse<null>,
       { status: 500 }
     )
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+): Promise<NextResponse> {
+  const db = supabaseAdmin || supabase;
+  try {
+    const { id: inspectionId } = await context.params;
+    const body = await request.json().catch(() => ({}));
+    const { status } = body;
+
+    if (!inspectionId || !status) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INVALID_REQUEST',
+            message: 'Inspection ID and status are required'
+          }
+        } as ApiResponse<null>,
+        { status: 400 }
+      );
+    }
+
+    const { error } = await db
+      .from('inspections')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', inspectionId);
+
+    if (error) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UPDATE_FAILED',
+            message: error.message
+          }
+        } as ApiResponse<null>,
+        { status: 500 }
+      );
+    }
+
+    // Record STATUS_CHANGED activity event
+    try {
+      const isReview = status === "MANUAL_REVIEW";
+      await recordActivityEvent({
+        action: "STATUS_CHANGED",
+        actionLabel: `Status Changed to ${status}`,
+        inspectionId,
+        actorName: "System Enforcement Officer",
+        category: "USER_ACTION",
+        details: `Inspection status updated to ${status}.`,
+        notification: isReview
+          ? {
+              targetUserId: "all",
+              type: "REVIEW",
+              title: "Manual Review Required",
+              message: `Inspection ${inspectionId.slice(0, 8).toUpperCase()} was moved to manual review.`,
+              actionUrl: `/inspections/${inspectionId}/review`,
+            }
+          : undefined,
+        metadata: { status },
+      });
+    } catch (eventErr) {
+      console.warn("Non-blocking activity event recording error:", eventErr);
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: { id: inspectionId, status }
+      } as ApiResponse<{ id: string; status: string }>,
+      { status: 200 }
+    );
+  } catch (err) {
+    console.error('Patch inspection error:', err);
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: 'SERVER_ERROR',
+          message: 'Internal server error updating inspection',
+          details: err instanceof Error ? err.message : 'Unknown error'
+        }
+      } as ApiResponse<null>,
+      { status: 500 }
+    );
   }
 }

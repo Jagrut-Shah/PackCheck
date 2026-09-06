@@ -17,12 +17,19 @@ export async function evaluateCompliance(
   const prodName = declarations.commodityName?.value || "";
   const prodLower = prodName.toLowerCase();
 
-  // If specific known demo commodity
-  if (prodLower.includes("ghee") || prodLower.includes("amul")) {
-    return MOCK_COMPLIANCE_AMUL_GHEE;
-  }
-  if (prodLower.includes("cookie") || prodLower.includes("nutribite")) {
-    return MOCK_COMPLIANCE_NUTRIBITE;
+  // Only fall back to static demo mocks if declarations are completely unpopulated
+  const hasFields =
+    (declarations.commodityName && declarations.commodityName.confidence > 0) ||
+    (declarations.netQuantity && declarations.netQuantity.confidence > 0) ||
+    (declarations.mrp && declarations.mrp.confidence > 0);
+
+  if (!hasFields) {
+    if (prodLower.includes("ghee") || prodLower.includes("amul")) {
+      return MOCK_COMPLIANCE_AMUL_GHEE;
+    }
+    if (prodLower.includes("cookie") || prodLower.includes("nutribite")) {
+      return MOCK_COMPLIANCE_NUTRIBITE;
+    }
   }
 
   // Dynamic evaluation strictly derived from the passed declarations

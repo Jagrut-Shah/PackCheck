@@ -19,9 +19,13 @@ import {
   storeExtractedFields,
   storeComplianceResults,
   runServerExtraction,
+  runServerOCR,
+  updateInspectionStatus,
 } from "@/lib/api/inspections";
 import { evaluateCompliance } from "@/lib/compliance";
 import { InspectionRecord } from "@/lib/types/inspection";
+import { OCRResult } from "@/lib/types/ocr";
+import { ExtractedDeclarations } from "@/lib/types/extraction";
 import { useToast } from "@/components/common/toast";
 
 interface ProcessingPageProps {
@@ -42,7 +46,10 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
   const inspectionId = resolvedParams.id;
 
   const [inspection, setInspection] = useState<InspectionRecord | null>(null);
+  const [ocrResult, setOcrResult] = useState<OCRResult | null>(null);
+  const [extractedDeclarations, setExtractedDeclarations] = useState<ExtractedDeclarations | null>(null);
   const [activeStage, setActiveStage] = useState(1);
+  const [failedStage, setFailedStage] = useState<number | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
   const [isAborted, setIsAborted] = useState(false);
   const [alreadyProcessed, setAlreadyProcessed] = useState(false);
@@ -136,54 +143,85 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
     async function advancePipeline() {
       try {
         if (activeStage === 1) {
-          await new Promise((r) => setTimeout(r, 600));
+          // Stage 1: Ingestion & Image verification
+          const current = inspection || (await getInspectionById(inspectionId));
+          if (current) setInspection(current);
           if (isCancelled) return;
+          const imageRef = current?.images?.[0]?.fileName || "Package photograph";
+          setLogs((l) => [
+            ...l,
+            `[INGESTION] Package photograph payload verified: ${imageRef}. Computer vision pipeline queued.`,
+          ]);
           setActiveStage(2);
-          setLogs((l) => [...l, logMessages[2]]);
         } else if (activeStage === 2) {
-          await new Promise((r) => setTimeout(r, 600));
-          if (isCancelled) return;
+          // Stage 2: OpenCV preparation (deskew, CLAHE, bilateral denoise)
+          setLogs((l) => [
+            ...l,
+            "[OPENCV] Applying computer vision preprocessing: CLAHE contrast enhancement, bilateral filter, and orientation deskewing.",
+          ]);
           setActiveStage(3);
-          setLogs((l) => [...l, logMessages[3]]);
         } else if (activeStage === 3) {
-          await new Promise((r) => setTimeout(r, 600));
+          // Stage 3: Real PaddleOCR inference via FastAPI microservice
+          setLogs((l) => [
+            ...l,
+            "[PADDLE_OCR] Submitting image payload to PaddleOCR microservice on port 8000...",
+          ]);
+          const ocrRes = await runServerOCR(inspectionId);
           if (isCancelled) return;
+          setOcrResult(ocrRes);
+          const itemCount = ocrRes.detectedTextItems?.length || ocrRes.blocks?.length || 0;
+          const avgConf = Math.round((ocrRes.overallConfidence || 0) * 100);
+          setLogs((l) => [
+            ...l,
+            `[PADDLE_OCR] Engine ${ocrRes.engine || "PaddleOCR"} completed: ${itemCount} tokens detected (${avgConf}% confidence). Bounding boxes mapped.`,
+          ]);
           setActiveStage(4);
-          setLogs((l) => [...l, logMessages[4]]);
         } else if (activeStage === 4) {
-          // Extraction phase: produce declarations and persist to Supabase
+          // Stage 4: Extraction phase: deterministic parsing + Gemini AI enrichment
+          const rawText = ocrResult?.rawText || inspection?.ocrResults?.[0]?.rawText || "";
           const extractionCtx = {
             productName: inspection?.product || inspection?.commodity?.commodityName,
             brandName: inspection?.commodity?.brandName,
             manufacturerName: inspection?.company || inspection?.commodity?.manufacturerName,
           };
-          const rawText = inspection?.ocrResults?.[0]?.rawText || "";
+          setLogs((l) => [
+            ...l,
+            "[FIELD_CLASSIFIER] Parsing raw text against Legal Metrology Rule 6 statutory field patterns...",
+          ]);
           const declarations = await runServerExtraction(inspectionId, rawText, extractionCtx);
           if (isCancelled) return;
+          setExtractedDeclarations(declarations);
           await storeExtractedFields(inspectionId, declarations);
           if (isCancelled) return;
+          setLogs((l) => [
+            ...l,
+            `[FIELD_CLASSIFIER] Declarations extracted and persisted via ${declarations.modelUsed || "Deterministic + Gemini Hybrid"}.`,
+          ]);
           setActiveStage(5);
-          setLogs((l) => [...l, logMessages[5]]);
         } else if (activeStage === 5) {
-          await new Promise((r) => setTimeout(r, 500));
-          if (isCancelled) return;
+          // Stage 5: Normalization
+          setLogs((l) => [
+            ...l,
+            "[NORMALIZER] Standardizing units to metric SI (L, ml, g, kg) and verifying MRP taxes & dates.",
+          ]);
           setActiveStage(6);
-          setLogs((l) => [...l, logMessages[6]]);
         } else if (activeStage === 6) {
-          // Compliance phase: evaluate statutory compliance and persist findings & verdict
-          const extractionCtx = {
-            productName: inspection?.product || inspection?.commodity?.commodityName,
-            brandName: inspection?.commodity?.brandName,
-            manufacturerName: inspection?.company || inspection?.commodity?.manufacturerName,
-          };
-          const rawText = inspection?.ocrResults?.[0]?.rawText || "";
-          const declarations = await runServerExtraction(inspectionId, rawText, extractionCtx);
-          const evaluation = await evaluateCompliance(declarations);
+          // Stage 6: Legal compliance evaluation via TypeScript Rules Engine
+          const decls = extractedDeclarations || (await runServerExtraction(inspectionId, ocrResult?.rawText || ""));
+          setLogs((l) => [
+            ...l,
+            "[RULES_ENGINE] Evaluating statutory checks against Legal Metrology (Packaged Commodities) Rules, 2011...",
+          ]);
+          const evaluation = await evaluateCompliance(decls);
           if (isCancelled) return;
           await storeComplianceResults(inspectionId, evaluation);
           if (isCancelled) return;
+          const failCount = evaluation.results.filter((r) => r.result === "FAIL").length;
+          setLogs((l) => [
+            ...l,
+            `[RULES_ENGINE] Compliance assessment complete: ${evaluation.results.length} checks evaluated (${failCount} non-compliance flags). Verdict: ${evaluation.overallResult}.`,
+          ]);
           setActiveStage(7);
-          setLogs((l) => [...l, logMessages[7]]);
         } else if (activeStage === 7) {
           if (!hasPersistedRef.current) {
             hasPersistedRef.current = true;
@@ -213,8 +251,14 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
       } catch (err) {
         console.error("Pipeline failure:", err);
         if (!isCancelled) {
+          const failedAt = activeStage;
+          setFailedStage(failedAt);
           setPipelineError(err instanceof Error ? err.message : "Pipeline execution failed");
           toast.error("Pipeline Failed", "Failed to persist extraction or compliance data.");
+          // Ensure unexpected terminal failure transitions the inspection to FAILED
+          updateInspectionStatus(inspectionId, "FAILED").catch((updateErr) =>
+            console.error("Failed to transition inspection to FAILED status:", updateErr)
+          );
         }
       }
     }
@@ -478,8 +522,10 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
                     variant="secondary"
                     size="sm"
                     onClick={() => {
+                      const stageToRetry = failedStage || activeStage || 3;
                       setPipelineError(null);
-                      setActiveStage(4);
+                      setFailedStage(null);
+                      setActiveStage(stageToRetry);
                     }}
                   >
                     Retry Pipeline

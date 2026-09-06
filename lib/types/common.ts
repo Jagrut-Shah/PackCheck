@@ -12,9 +12,11 @@
  */
 export const INSPECTION_STATUS = {
   DRAFT: "DRAFT",
+  PENDING: "PENDING",
   PROCESSING: "PROCESSING",
   MANUAL_REVIEW: "MANUAL_REVIEW",
   COMPLETED: "COMPLETED",
+  FAILED: "FAILED",
 } as const;
 
 export type InspectionStatus = (typeof INSPECTION_STATUS)[keyof typeof INSPECTION_STATUS];

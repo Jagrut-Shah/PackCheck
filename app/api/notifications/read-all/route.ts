@@ -1,67 +1,49 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
-import { ApiResponse } from '@/lib/types/common'
+import { NextRequest, NextResponse } from "next/server";
+import { ApiResponse } from "@/lib/types/common";
+import { markAuthoritativeNotificationRead, recordActivityEvent } from "@/lib/events/activity-event";
+import { supabase } from "@/lib/supabase";
 
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
   try {
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const searchParams = request.nextUrl.searchParams;
+    let userId = searchParams.get("user_id");
 
-    if (authError || !user) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'AUTH_REQUIRED',
-            message: 'User authentication required'
-          }
-        } as ApiResponse<null>,
-        { status: 401 }
-      )
+    if (!userId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        userId = user.id;
+      }
     }
 
-    // Mark all COMPLETED inspections as viewed
-    const { error: updateError } = await supabase
-      .from('inspections')
-      .update({
-        viewed_at: new Date().toISOString()
-      })
-      .eq('inspector_id', user.id)
-      .eq('status', 'COMPLETED')
-      .is('viewed_at', null)
+    await markAuthoritativeNotificationRead("all", userId || undefined);
 
-    if (updateError) {
-      console.error('Update error:', updateError)
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'DB_UPDATE_FAILED',
-            message: 'Failed to mark notifications as read'
-          }
-        } as ApiResponse<null>,
-        { status: 500 }
-      )
-    }
+    await recordActivityEvent({
+      action: "NOTIFICATION_READ",
+      actionLabel: "Notifications Cleared",
+      actorId: userId || "officer_enforcement",
+      actorName: "Legal Metrology Inspector",
+      details: "Inspector cleared and acknowledged all unread notifications.",
+      category: "USER_ACTION",
+    });
 
     return NextResponse.json(
       {
         success: true,
-        data: { message: 'All notifications marked as read' }
+        data: { message: "All notifications marked as read" },
       } as ApiResponse<any>,
       { status: 200 }
-    )
+    );
   } catch (err) {
-    console.error('Error:', err)
+    console.error("PATCH /api/notifications/read-all error:", err);
     return NextResponse.json(
       {
         success: false,
         error: {
-          code: 'SERVER_ERROR',
-          message: 'Internal server error'
-        }
+          code: "SERVER_ERROR",
+          message: "Internal server error",
+        },
       } as ApiResponse<null>,
       { status: 500 }
-    )
+    );
   }
 }

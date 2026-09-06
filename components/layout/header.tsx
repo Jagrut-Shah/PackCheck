@@ -15,7 +15,6 @@ import {
   Clock,
   ExternalLink,
 } from "lucide-react";
-import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { getCurrentUser } from "@/lib/auth";
 import type { UserProfile } from "@/lib/types/user";
 import { supabase } from "@/lib/supabase";
@@ -39,16 +38,57 @@ interface NotificationItem {
 
 interface ApiNotification {
   id: string;
-  inspection_id: string;
-  product_type: string;
-  status: string;
-  violation_count: number;
+  inspection_id?: string;
+  product_type?: string;
+  status?: string;
+  violation_count?: number;
   created_at: string;
+  title?: string;
+  message?: string;
+  type?: "CRITICAL" | "COMPLIANT" | "REVIEW" | "INFO";
+  read?: boolean;
+  action_url?: string;
+}
+
+const LOCAL_READ_KEY = "packcheck_read_notification_ids";
+
+function getLocalReadIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(LOCAL_READ_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function addLocalReadIds(ids: string[]): void {
+  if (typeof window === "undefined" || !ids.length) return;
+  try {
+    const current = getLocalReadIds();
+    ids.forEach((id) => current.add(id));
+    localStorage.setItem(LOCAL_READ_KEY, JSON.stringify(Array.from(current)));
+  } catch {
+    // Ignore
+  }
+}
+
+// Safely parse timestamps ensuring Postgres timestamps without 'Z' are parsed as UTC
+function parseUtcDate(dateString: string): Date {
+  if (!dateString) return new Date();
+  let s = String(dateString).trim();
+  if (s.includes("T") && !s.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(s)) {
+    s = `${s}Z`;
+  } else if (!s.includes("T") && s.includes(" ") && !s.endsWith("Z")) {
+    s = `${s.replace(" ", "T")}Z`;
+  }
+  const date = new Date(s);
+  return isNaN(date.getTime()) ? new Date(dateString) : date;
 }
 
 // Helper to format time relative to now
 function formatTimeAgo(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseUtcDate(dateString);
   const now = new Date();
   const secondsAgo = Math.floor((now.getTime() - date.getTime()) / 1000);
 
@@ -56,28 +96,34 @@ function formatTimeAgo(dateString: string): string {
   if (secondsAgo < 3600) return `${Math.floor(secondsAgo / 60)}m ago`;
   if (secondsAgo < 86400) return `${Math.floor(secondsAgo / 3600)}h ago`;
   if (secondsAgo < 604800) return `${Math.floor(secondsAgo / 86400)}d ago`;
-  return date.toLocaleDateString();
+  return date.toLocaleDateString("en-IN");
 }
 
 // Helper to convert API notifications to UI format
 function transformNotifications(apiNotifications: ApiNotification[]): NotificationItem[] {
-  return apiNotifications.map((notif) => {
-    let type: "CRITICAL" | "COMPLIANT" | "REVIEW" | "INFO" = "INFO";
-    let title = "";
-    let description = "";
+  return (apiNotifications || []).map((notif) => {
+    let type: "CRITICAL" | "COMPLIANT" | "REVIEW" | "INFO" = notif.type || "INFO";
+    let title = notif.title || "";
+    let description = notif.message || "";
+    const violationCount = notif.violation_count || 0;
 
-    if (notif.violation_count > 0) {
-      type = "CRITICAL";
-      title = `Non-Compliance Detected`;
-      description = `${notif.product_type} (${notif.inspection_id}) flagged with ${notif.violation_count} violation${notif.violation_count > 1 ? "s" : ""}.`;
-    } else if (notif.status === "COMPLETED") {
-      type = "COMPLIANT";
-      title = `Inspection Verified (PASS)`;
-      description = `${notif.product_type} (${notif.inspection_id}) passed all statutory compliance checks.`;
-    } else if (notif.status === "MANUAL_REVIEW") {
-      type = "REVIEW";
-      title = `Manual Review Required`;
-      description = `${notif.product_type} (${notif.inspection_id}) requires inspector confirmation.`;
+    if (!title) {
+      if (violationCount > 0) {
+        type = "CRITICAL";
+        title = `Non-Compliance Detected`;
+        description = `${notif.product_type || "Commodity"} (${notif.inspection_id || notif.id}) flagged with ${violationCount} violation${violationCount > 1 ? "s" : ""}.`;
+      } else if (notif.status === "COMPLETED") {
+        type = "COMPLIANT";
+        title = `Inspection Verified (PASS)`;
+        description = `${notif.product_type || "Commodity"} (${notif.inspection_id || notif.id}) passed all statutory compliance checks.`;
+      } else if (notif.status === "MANUAL_REVIEW") {
+        type = "REVIEW";
+        title = `Manual Review Required`;
+        description = `${notif.product_type || "Commodity"} (${notif.inspection_id || notif.id}) requires inspector confirmation.`;
+      } else {
+        title = `Regulatory Activity`;
+        description = `${notif.product_type || "Commodity"} verification update.`;
+      }
     }
 
     return {
@@ -86,8 +132,10 @@ function transformNotifications(apiNotifications: ApiNotification[]): Notificati
       description,
       time: formatTimeAgo(notif.created_at),
       type,
-      read: false, // Will be updated based on viewed_at
-      href: `/inspections/${notif.id}/compliance`,
+      read: Boolean(notif.read),
+      href:
+        notif.action_url ||
+        (notif.inspection_id ? `/inspections/${notif.inspection_id}/compliance` : undefined),
     };
   });
 }
@@ -119,53 +167,82 @@ export const Header: React.FC<HeaderProps> = ({
     loadUser();
   }, []);
 
-  // Fetch notifications from API
+  // Fetch notifications from API with Realtime sync
   useEffect(() => {
-    async function fetchNotifications() {
+    async function fetchNotifications(silent = false) {
       try {
-        setIsLoadingNotifications(true);
-
-        // Get current user
-        const { data: { user } } = await supabase.auth.getUser();
-        console.log('Current user ID:', user?.id);
-
-        if (!user) {
-          console.log('No authenticated user');
-          setIsLoadingNotifications(false);
-          return;
+        if (!silent) {
+          setIsLoadingNotifications(true);
         }
 
-        // Pass user ID as query param
-        const response = await fetch(`/api/notifications?limit=20&user_id=${user.id}`);
-        console.log('API Response status:', response.status);
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id || currentUser?.id || "";
+        const query = userId ? `?limit=20&user_id=${encodeURIComponent(userId)}` : `?limit=20`;
+
+        const response = await fetch(`/api/notifications${query}`);
 
         if (!response.ok) {
-          console.error("Failed to fetch notifications");
+          console.warn("Notice: Notifications fetch status:", response.status);
           return;
         }
 
         const data = await response.json();
-        console.log('API Response data:', data);
 
-        if (data.success) {
-          const transformed = transformNotifications(data.data.notifications);
-          console.log('Transformed notifications:', transformed);
+        if (data.success && data.data) {
+          const readIds = getLocalReadIds();
+          const transformed = transformNotifications(data.data.notifications || []).map((item) => {
+            if (readIds.has(item.id) || (item.href && readIds.has(item.href))) {
+              return { ...item, read: true };
+            }
+            return item;
+          });
           setNotifications(transformed);
-          setUnreadCount(data.data.unread_count);
+          const unread = transformed.filter((n) => !n.read).length;
+          setUnreadCount(unread);
         }
       } catch (err) {
-        console.error("Error fetching notifications:", err);
+        console.warn("Notice fetching notifications:", err);
       } finally {
-        setIsLoadingNotifications(false);
+        if (!silent) {
+          setIsLoadingNotifications(false);
+        }
       }
     }
 
-    fetchNotifications();
+    fetchNotifications(false);
 
-    // Refresh notifications every 30 seconds
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    // Subscribe to Realtime activities channel for instant sync across tabs
+    const channel = supabase.channel("packcheck-activities-header");
+    channel
+      .on("broadcast", { event: "activity" }, (payload: any) => {
+        if (payload?.payload?.notification) {
+          const notif = payload.payload.notification;
+          const transformedList = transformNotifications([notif]);
+          if (transformedList.length > 0) {
+            const transformed = transformedList[0];
+            const readIds = getLocalReadIds();
+            if (readIds.has(transformed.id)) {
+              transformed.read = true;
+            }
+            setNotifications((prev) => {
+              if (prev.some((item) => item.id === transformed.id)) return prev;
+              return [transformed, ...prev];
+            });
+            if (!transformed.read) {
+              setUnreadCount((prev) => prev + 1);
+            }
+          }
+        }
+      })
+      .subscribe();
+
+    // Silent polling fallback every 15 seconds (does not trigger loading spinner/flash)
+    const interval = setInterval(() => fetchNotifications(true), 15000);
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser]);
 
 
   // Handle click outside to close dropdown
@@ -199,7 +276,7 @@ export const Header: React.FC<HeaderProps> = ({
   }, [isOpen]);
 
 
-  // Clear all notifications (local only, no API call needed)
+  // Clear all notifications (local only)
   const clearAllNotifications = () => {
     setNotifications([]);
     setUnreadCount(0);
@@ -220,52 +297,53 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   // Mark all as read
-const markAllAsRead = async () => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const response = await fetch(`/api/notifications/read-all?user_id=${user.id}`, {
-      method: "PATCH",
-    });
-
-    if (response.ok) {
+  const markAllAsRead = async () => {
+    try {
+      const allIds = notifications.map((n) => n.id);
+      addLocalReadIds(allIds);
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       setUnreadCount(0);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id || currentUser?.id || "";
+      const query = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
+
+      await fetch(`/api/notifications/read-all${query}`, {
+        method: "PATCH",
+      });
+    } catch (err) {
+      console.error("Error marking all as read:", err);
     }
-  } catch (err) {
-    console.error("Error marking all as read:", err);
-  }
-};
+  };
 
-// Handle notification click
-const handleNotificationClick = async (item: NotificationItem) => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const response = await fetch(`/api/notifications/${item.id}/read?user_id=${user.id}`, {
-      method: "PATCH",
-    });
-
-    if (response.ok) {
+  // Handle notification click
+  const handleNotificationClick = async (item: NotificationItem) => {
+    try {
+      addLocalReadIds([item.id]);
       setNotifications((prev) =>
         prev.map((n) => (n.id === item.id ? { ...n, read: true } : n))
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
-    }
-  } catch (err) {
-    console.error("Error marking notification as read:", err);
-  }
 
-  if (item.href) {
-    setIsOpen(false);
-    router.push(item.href);
-  }
-};
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id || currentUser?.id || "";
+      const query = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
+
+      await fetch(`/api/notifications/${item.id}/read${query}`, {
+        method: "PATCH",
+      });
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
+
+    if (item.href) {
+      setIsOpen(false);
+      router.push(item.href);
+    }
+  };
   return (
     <header className="sticky top-0 z-30 flex h-14 w-full items-center justify-between border-b border-[#E2E8F0] bg-white px-4 lg:px-6">
-      {/* Left side: Mobile Toggle & Breadcrumbs */}
+      {/* Left side: Mobile Toggle */}
       <div className="flex items-center gap-3">
         <button
           type="button"
@@ -276,9 +354,6 @@ const handleNotificationClick = async (item: NotificationItem) => {
           <Menu className="size-4" />
         </button>
 
-        <div className="hidden sm:block">
-          <Breadcrumbs items={breadcrumbItems} />
-        </div>
         <div className="sm:hidden text-xs font-semibold text-[#0F172A]">
           {activeTitle}
         </div>
@@ -314,7 +389,7 @@ const handleNotificationClick = async (item: NotificationItem) => {
           >
             <Bell className="size-4" />
             {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-[#DC2626] text-[9px] font-bold text-white ring-2 ring-white shadow-xs animate-pulse">
+              <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-[#DC2626] text-[9px] font-bold text-white ring-2 ring-white shadow-xs">
                 {unreadCount > 9 ? "9+" : unreadCount}
               </span>
             )}
@@ -437,7 +512,7 @@ const handleNotificationClick = async (item: NotificationItem) => {
         {/* User Identity Snippet */}
         <Link
           href="/profile"
-          className="flex items-center gap-2 border-l border-[#E2E8F0] pl-3 hover:opacity-90 transition-opacity"
+          className="flex items-center border-l border-[#E2E8F0] pl-3 hover:opacity-90 transition-opacity"
           title={
             currentUser?.email
               ? `${currentUser.fullName} (${currentUser.email})`
@@ -453,14 +528,6 @@ const handleNotificationClick = async (item: NotificationItem) => {
                 .substring(0, 2)
                 .toUpperCase()
               : "LM"}
-          </div>
-          <div className="hidden sm:flex flex-col text-left">
-            <span className="text-xs font-semibold text-[#0F172A] leading-tight">
-              {currentUser?.fullName || "Senior Inspector"}
-            </span>
-            <span className="text-[10px] text-[#64748B] leading-tight">
-              {currentUser?.role || currentUser?.email || "Legal Metrology"}
-            </span>
           </div>
         </Link>
       </div>

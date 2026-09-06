@@ -63,12 +63,12 @@ def create_application() -> FastAPI:
         redoc_url="/redoc",
     )
 
-    # 1. Register CORS Middleware
+    # 1. Register CORS Middleware (Restricted server-to-server; no credentials)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["*"],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
 
