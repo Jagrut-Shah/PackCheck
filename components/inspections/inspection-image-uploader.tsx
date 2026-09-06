@@ -83,17 +83,36 @@ function getImageDimensions(file: File): Promise<string> {
       resolve("1920 × 1080 px");
       return;
     }
-    const tempUrl = URL.createObjectURL(file);
-    const img = new window.Image();
-    img.onload = () => {
-      URL.revokeObjectURL(tempUrl);
-      resolve(`${img.naturalWidth} × ${img.naturalHeight} px`);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(tempUrl);
+    try {
+      const tempUrl = URL.createObjectURL(file);
+      const img = new window.Image();
+      const timer = setTimeout(() => {
+        try {
+          URL.revokeObjectURL(tempUrl);
+        } catch {}
+        resolve("Dimensions loaded");
+      }, 1500);
+
+      img.onload = () => {
+        clearTimeout(timer);
+        try {
+          URL.revokeObjectURL(tempUrl);
+        } catch {}
+        resolve(`${img.naturalWidth} × ${img.naturalHeight} px`);
+      };
+
+      img.onerror = () => {
+        clearTimeout(timer);
+        try {
+          URL.revokeObjectURL(tempUrl);
+        } catch {}
+        resolve("1920 × 1080 px");
+      };
+
+      img.src = tempUrl;
+    } catch {
       resolve("1920 × 1080 px");
-    };
-    img.src = tempUrl;
+    }
   });
 }
 
@@ -103,6 +122,15 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Keep a synchronized ref to prevent stale-closure bugs during async quality checks
+  const filesRef = useRef(files);
+  filesRef.current = files;
+
+  const updateFiles = (next: UploadedFileItem[]) => {
+    filesRef.current = next;
+    onFilesChange(next);
+  };
 
   // Camera State
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -306,7 +334,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
     if (!capturedBlob) return;
 
     const angleHint = targetSlotId
-      ? files.find((f) => f.id === targetSlotId)?.angle || "package"
+      ? filesRef.current.find((f) => f.id === targetSlotId)?.angle || "package"
       : "package";
     const filename = `camera_${angleHint.toLowerCase()}_${Date.now()}.jpg`;
     const photoFile = new File([capturedBlob], filename, { type: "image/jpeg" });
@@ -322,7 +350,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
   };
 
   // ==========================================================================
-  // QUALITY EVALUATION RUNNER
+  // QUALITY EVALUATION RUNNER (Uses filesRef to avoid stale closure wipes)
   // ==========================================================================
 
   const runQualityEvaluation = async (
@@ -332,33 +360,31 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
     try {
       const result: ImageQualityAnalysisResult = await analyzeImageQuality(file);
 
-      onFilesChange(
-        files.map((item) => {
-          if (item.id !== itemId) return item;
-          return {
-            ...item,
-            qualityStatus: result.status,
-            qualityScore: result.score,
-            qualityReasons: result.reasons,
-            qualityMetrics: result.metrics,
-            qualityStatusPlaceholder: result.status === "POOR" ? "PENDING" : "PASSED",
-          };
-        })
-      );
+      const updated = filesRef.current.map((item) => {
+        if (item.id !== itemId) return item;
+        return {
+          ...item,
+          qualityStatus: result.status,
+          qualityScore: result.score,
+          qualityReasons: result.reasons,
+          qualityMetrics: result.metrics,
+          qualityStatusPlaceholder: result.status === "POOR" ? ("PENDING" as const) : ("PASSED" as const),
+        };
+      });
+      updateFiles(updated);
     } catch (err) {
       console.error("Quality analysis failed for image:", itemId, err);
-      onFilesChange(
-        files.map((item) => {
-          if (item.id !== itemId) return item;
-          return {
-            ...item,
-            qualityStatus: "UNAVAILABLE",
-            qualityScore: 0,
-            qualityReasons: ["Quality check could not be completed."],
-            qualityStatusPlaceholder: "PENDING",
-          };
-        })
-      );
+      const updated = filesRef.current.map((item) => {
+        if (item.id !== itemId) return item;
+        return {
+          ...item,
+          qualityStatus: "UNAVAILABLE" as const,
+          qualityScore: 0,
+          qualityReasons: ["Quality check could not be completed."],
+          qualityStatusPlaceholder: "PENDING" as const,
+        };
+      });
+      updateFiles(updated);
     }
   };
 
@@ -370,7 +396,8 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
     validFiles: File[],
     isCamera: boolean = false
   ) => {
-    const startIndex = files.length;
+    const currentFiles = filesRef.current;
+    const startIndex = currentFiles.length;
 
     const newItems: UploadedFileItem[] = await Promise.all(
       validFiles.map(async (file, idx) => {
@@ -401,9 +428,9 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
       })
     );
 
-    // Add items immediately to UI in "CHECKING" state
-    const updatedFiles = [...files, ...newItems];
-    onFilesChange(updatedFiles);
+    // Immediately update files using synchronized ref
+    const updatedFiles = [...filesRef.current, ...newItems];
+    updateFiles(updatedFiles);
 
     // Asynchronously run real image quality analysis on each new file
     for (const item of newItems) {
@@ -414,6 +441,11 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
   const handleDeviceFileSelection = async (selectedFiles: FileList | null) => {
     if (!selectedFiles || selectedFiles.length === 0) return;
     setUploadError(null);
+
+    // Reset input so re-selecting the exact same file fires onChange again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
 
     const fileList = Array.from(selectedFiles);
     const validFiles: File[] = [];
@@ -447,7 +479,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
     newFile: File,
     isCamera: boolean = false
   ) => {
-    const existing = files.find((f) => f.id === slotId);
+    const existing = filesRef.current.find((f) => f.id === slotId);
     if (!existing) return;
 
     // Revoke old blob URL to free memory and guarantee old image is superseded
@@ -463,7 +495,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
     const newDimensions = await getImageDimensions(newFile);
 
     // Immediately replace slot with status CHECKING (never immediate PASSED)
-    const updatedFiles: UploadedFileItem[] = files.map((item) => {
+    const updatedFiles: UploadedFileItem[] = filesRef.current.map((item) => {
       if (item.id !== slotId) return item;
       return {
         ...item,
@@ -481,7 +513,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
       };
     });
 
-    onFilesChange(updatedFiles);
+    updateFiles(updatedFiles);
 
     // Run fresh quality evaluation on the replacement image
     runQualityEvaluation(slotId, newFile);
@@ -498,6 +530,9 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
   const handleReplaceFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     const slotId = targetSlotId;
+    if (replaceFileInputRef.current) {
+      replaceFileInputRef.current.value = "";
+    }
     if (file && slotId) {
       if (file.size > MAX_FILE_SIZE_BYTES) {
         setUploadError(`Selected file exceeds 15MB limit: ${formatFileSize(file.size)}`);
@@ -513,28 +548,28 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
   // ==========================================================================
 
   const handleRemove = (id: string) => {
-    const item = files.find((f) => f.id === id);
+    const item = filesRef.current.find((f) => f.id === id);
     if (item?.previewUrl && item.previewUrl.startsWith("blob:")) {
       URL.revokeObjectURL(item.previewUrl);
       trackedObjectUrlsRef.current.delete(item.previewUrl);
     }
-    onFilesChange(files.filter((f) => f.id !== id));
+    updateFiles(filesRef.current.filter((f) => f.id !== id));
   };
 
   const handleAngleChange = (id: string, newAngle: PackageImageAngle) => {
-    onFilesChange(
-      files.map((f) => (f.id === id ? { ...f, angle: newAngle } : f))
+    updateFiles(
+      filesRef.current.map((f) => (f.id === id ? { ...f, angle: newAngle } : f))
     );
   };
 
   const handleMove = (index: number, direction: "up" | "down") => {
-    const newFiles = [...files];
+    const newFiles = [...filesRef.current];
     const targetIndex = direction === "up" ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= newFiles.length) return;
     const temp = newFiles[index];
     newFiles[index] = newFiles[targetIndex];
     newFiles[targetIndex] = temp;
-    onFilesChange(newFiles);
+    updateFiles(newFiles);
   };
 
   return (
@@ -544,7 +579,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
         ref={fileInputRef}
         type="file"
         multiple
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/*,image/jpeg,image/png,image/webp"
         className="hidden"
         onChange={(e) => handleDeviceFileSelection(e.target.files)}
       />
@@ -553,7 +588,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
       <input
         ref={replaceFileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/*,image/jpeg,image/png,image/webp"
         className="hidden"
         onChange={handleReplaceFileInputChange}
       />
@@ -576,7 +611,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
           <button
             type="button"
             onClick={() => setUploadError(null)}
-            className="ml-auto text-[#991B1B] hover:text-[#7F1D1D] text-xs font-semibold"
+            className="ml-auto text-[#991B1B] hover:text-[#7F1D1D] text-xs font-semibold cursor-pointer"
           >
             Dismiss
           </button>
@@ -632,7 +667,12 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
           {/* Action B: Choose from Device */}
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              if (fileInputRef.current) {
+                fileInputRef.current.value = "";
+                fileInputRef.current.click();
+              }
+            }}
             className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-white text-[#0F172A] text-xs font-semibold border border-[#CBD5E1] shadow-2xs hover:bg-[#F8FAFC] hover:border-[#94A3B8] hover:text-[#1D4ED8] active:scale-[0.98] transition-all duration-150 cursor-pointer select-none"
           >
             <FolderOpen className="size-4 text-[#475569]" />
@@ -660,7 +700,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
                 </span>
                 {targetSlotId && (
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#1E293B] text-[#94A3B8] border border-[#334155]">
-                    Slot: {files.find((f) => f.id === targetSlotId)?.angle || "Evidence"}
+                    Slot: {filesRef.current.find((f) => f.id === targetSlotId)?.angle || "Evidence"}
                   </span>
                 )}
               </div>
@@ -704,8 +744,9 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
                         closeCameraModal();
                         if (targetSlotId) {
                           triggerSlotDeviceReplacement(targetSlotId);
-                        } else {
-                          fileInputRef.current?.click();
+                        } else if (fileInputRef.current) {
+                          fileInputRef.current.value = "";
+                          fileInputRef.current.click();
                         }
                       }}
                       className="w-full h-8 px-3 rounded-lg bg-[#2563EB] text-white text-xs font-semibold hover:bg-[#1D4ED8] transition-colors cursor-pointer"
@@ -806,8 +847,9 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
                       closeCameraModal();
                       if (targetSlotId) {
                         triggerSlotDeviceReplacement(targetSlotId);
-                      } else {
-                        fileInputRef.current?.click();
+                      } else if (fileInputRef.current) {
+                        fileInputRef.current.value = "";
+                        fileInputRef.current.click();
                       }
                     }}
                     className="text-xs text-[#94A3B8] hover:text-white underline cursor-pointer"
@@ -1039,7 +1081,7 @@ export const InspectionImageUploader: React.FC<InspectionImageUploaderProps> = (
                       <button
                         type="button"
                         onClick={() => runQualityEvaluation(item.id, item.file)}
-                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#1D4ED8] hover:underline"
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#1D4ED8] hover:underline cursor-pointer"
                       >
                         <RefreshCw className="size-2.5" />
                         <span>Check Again</span>
