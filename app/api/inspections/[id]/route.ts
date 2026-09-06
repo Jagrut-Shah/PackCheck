@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { ApiResponse } from '@/lib/types/common'
 import { recordActivityEvent } from '@/lib/events/activity-event'
-import { getInspectionCompanyLink } from '@/lib/companies/storage'
+import { getInspectionCompanyLink, getInspectionCompanyLinkAsync } from '@/lib/companies/storage'
 import { requireAuth, verifyInspectionOwnership } from '@/lib/auth/server'
 
 interface InspectionDetailResponse {
@@ -112,9 +112,22 @@ export async function GET(
         .order('created_at', { ascending: false })
     ])
 
-    const localLink = getInspectionCompanyLink(inspectionId);
+    const localLink = await getInspectionCompanyLinkAsync(inspectionId);
     const companyId = inspection.company_id || localLink?.companyId;
-    const companyName = inspection.company_name || localLink?.companyName;
+    let companyName = inspection.company_name || localLink?.companyName;
+
+    if (!companyName || companyName.trim() === ":") {
+      const mf = fieldsRes.data?.find(
+        (f: any) =>
+          f.field_name === "manufacturer" &&
+          f.extracted_value &&
+          f.extracted_value.trim() !== ":" &&
+          f.extracted_value.trim() !== ""
+      );
+      if (mf) {
+        companyName = mf.extracted_value.trim();
+      }
+    }
 
     const primaryImage = imagesRes.data?.[0];
     const imageUrl = primaryImage?.image_url || inspection.image_url || '';

@@ -5,7 +5,8 @@ import { recordActivityEvent } from '@/lib/events/activity-event'
 import {
   ensurePackerForInspection,
   recordInspectionCompanyLink,
-  getAllInspectionCompanyLinks
+  getAllInspectionCompanyLinks,
+  getAllInspectionCompanyLinksAsync
 } from '@/lib/companies/storage'
 import { requireAuth } from '@/lib/auth/server'
 
@@ -381,11 +382,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (inspectionData && (linkedPackerId || linkedCompanyName || manufacturerName)) {
-      recordInspectionCompanyLink(
+      const finalCompName = linkedCompanyName || manufacturerName || "";
+      await recordInspectionCompanyLink(
         inspectionData.id,
         linkedPackerId || "",
-        linkedCompanyName || manufacturerName || ""
+        finalCompName
       );
+      // Persist manufacturer name directly into extracted_fields table in Supabase PostgreSQL
+      try {
+        const db = supabaseAdmin || supabase;
+        await db
+          .from("extracted_fields")
+          .insert([
+            {
+              inspection_id: inspectionData.id,
+              field_name: "manufacturer",
+              extracted_value: finalCompName,
+              confidence_score: 1.0,
+              source: "INSPECTION_METADATA",
+            },
+          ]);
+      } catch (e: any) {
+        console.warn("extracted_fields manufacturer insert warning:", e);
+      }
     }
 
     if (inspectionError || !inspectionData) {
@@ -817,7 +836,23 @@ export async function GET(
     // Build history response
     // --------------------------------------------------------
 
-    const companyLinks = getAllInspectionCompanyLinks();
+    const companyLinks = await getAllInspectionCompanyLinksAsync();
+
+    // Query extracted_fields table for manufacturer names across these inspections to guarantee company_name is present
+    const { data: manufacturerFields } = await db
+      .from("extracted_fields")
+      .select("inspection_id, extracted_value")
+      .in("inspection_id", inspectionIds)
+      .eq("field_name", "manufacturer");
+
+    const manufacturerMap: Record<string, string> = {};
+    if (manufacturerFields) {
+      for (const mf of manufacturerFields) {
+        if (mf.extracted_value && mf.extracted_value.trim() !== ":" && mf.extracted_value.trim() !== "") {
+          manufacturerMap[mf.inspection_id] = mf.extracted_value.trim();
+        }
+      }
+    }
 
     const historyItems:
       InspectionHistoryItem[] =
@@ -831,7 +866,7 @@ export async function GET(
           created_at: string
         }) => {
           const link = companyLinks[inspection.id];
-          const companyName = inspection.company_name || link?.companyName || "";
+          const companyName = inspection.company_name || link?.companyName || manufacturerMap[inspection.id] || "";
           const companyId = inspection.company_id || link?.companyId || "";
 
           return {

@@ -4,6 +4,7 @@ import {
   getAllPackers,
   createPacker,
   getAllInspectionCompanyLinks,
+  getAllInspectionCompanyLinksAsync,
   RegisteredPackerEntity,
 } from "@/lib/companies/storage";
 import { isCompanyMatch } from "@/lib/companies/normalization";
@@ -108,7 +109,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     // 5. Aggregate operational metrics per company (1 inspection = 1 audit)
     const inspectionList = allInspections || [];
-    const localLinks = getAllInspectionCompanyLinks();
+    const localLinks = await getAllInspectionCompanyLinksAsync();
 
     const enrichedCompanies: CompanyListItem[] = packers.map((packer) => {
       // Find all inspections belonging to this company

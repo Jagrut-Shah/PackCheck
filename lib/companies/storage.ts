@@ -1,7 +1,7 @@
 /**
  * PackCheck AI — Registered Packers Storage & Repository Layer
- * Interacts with Supabase table `public.registered_packers` with seamless local persistence
- * fallback ensuring continuous demo availability and zero downtime before/after SQL migrations.
+ * Interacts with Supabase table `public.registered_packers` with seamless cloud & local persistence
+ * fallback ensuring continuous demo availability and zero downtime across Vercel and local environments.
  */
 
 import fs from "fs";
@@ -45,9 +45,19 @@ export interface CreatePackerInput {
   status?: "ACTIVE" | "UNDER_REVIEW" | "SUSPENDED";
 }
 
-// Local fallback file path
+// Local fallback file paths
 const DATA_DIR = path.join(process.cwd(), ".data");
 const LOCAL_STORAGE_FILE = path.join(DATA_DIR, "registered_packers.json");
+const LINKS_FILE = path.join(DATA_DIR, "inspection_companies.json");
+
+// Supabase Storage Cloud Backup Paths
+const STORAGE_BUCKET = "product-images";
+const STORAGE_PACKERS_PATH = "system/registered_packers.json";
+const STORAGE_LINKS_PATH = "system/inspection_companies.json";
+
+// In-memory cache for ultra-fast serverless lambda execution
+let inMemoryPackers: RegisteredPackerEntity[] | null = null;
+let inMemoryLinks: Record<string, { companyId: string; companyName: string }> | null = null;
 
 // Canonical initial entities for Rule 27 demo seed
 const INITIAL_SEED_PACKERS: RegisteredPackerEntity[] = [
@@ -134,50 +144,81 @@ const INITIAL_SEED_PACKERS: RegisteredPackerEntity[] = [
 ];
 
 /**
- * Reads local fallback packers from disk.
+ * Downloads registered packers from Supabase Storage bucket.
  */
-function readLocalPackers(): RegisteredPackerEntity[] {
+async function fetchCloudPackers(): Promise<RegisteredPackerEntity[] | null> {
+  const db = supabaseAdmin || supabase;
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+    const { data, error } = await db.storage
+      .from(STORAGE_BUCKET)
+      .download(STORAGE_PACKERS_PATH);
+
+    if (!error && data) {
+      const text = await data.text();
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
     }
-    if (!fs.existsSync(LOCAL_STORAGE_FILE)) {
-      fs.writeFileSync(
-        LOCAL_STORAGE_FILE,
-        JSON.stringify(INITIAL_SEED_PACKERS, null, 2),
-        "utf8"
-      );
-      return [...INITIAL_SEED_PACKERS];
-    }
-    const raw = fs.readFileSync(LOCAL_STORAGE_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [...INITIAL_SEED_PACKERS];
   } catch (err) {
-    console.warn("Could not read local registered packers fallback:", err);
-    return [...INITIAL_SEED_PACKERS];
+    console.warn("[STORAGE] Cloud packers download exception:", err);
+  }
+  return null;
+}
+
+/**
+ * Uploads registered packers to Supabase Storage bucket for cross-deployment consistency.
+ */
+async function persistCloudPackers(packers: RegisteredPackerEntity[]): Promise<void> {
+  const db = supabaseAdmin || supabase;
+  try {
+    const buf = Buffer.from(JSON.stringify(packers, null, 2), "utf8");
+    await db.storage
+      .from(STORAGE_BUCKET)
+      .upload(STORAGE_PACKERS_PATH, buf, {
+        upsert: true,
+        contentType: "application/json",
+      });
+  } catch (err) {
+    console.warn("[STORAGE] Cloud packers persist exception:", err);
   }
 }
 
 /**
- * Saves local fallback packers to disk.
+ * Reads local fallback packers from disk if filesystem is readable.
+ */
+function readLocalPackers(): RegisteredPackerEntity[] {
+  try {
+    if (fs.existsSync(LOCAL_STORAGE_FILE)) {
+      const raw = fs.readFileSync(LOCAL_STORAGE_FILE, "utf8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn("[STORAGE] Local packers read exception:", err);
+  }
+  return [...INITIAL_SEED_PACKERS];
+}
+
+/**
+ * Saves local fallback packers to disk (gracefully handles read-only serverless lambdas).
  */
 function writeLocalPackers(packers: RegisteredPackerEntity[]): void {
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    fs.writeFileSync(
-      LOCAL_STORAGE_FILE,
-      JSON.stringify(packers, null, 2),
-      "utf8"
-    );
-  } catch (err) {
-    console.warn("Could not write local registered packers fallback:", err);
+    fs.writeFileSync(LOCAL_STORAGE_FILE, JSON.stringify(packers, null, 2), "utf8");
+  } catch {
+    // Expected in read-only serverless environments like AWS Lambda / Vercel
   }
 }
 
 /**
  * Get all registered packers, supporting search, state filtering, and user isolation.
+ * Automatically loads from Supabase DB -> Supabase Storage -> Local fallback.
  */
 export async function getAllPackers(params?: {
   searchQuery?: string;
@@ -187,6 +228,7 @@ export async function getAllPackers(params?: {
   const db = supabaseAdmin || supabase;
   let packers: RegisteredPackerEntity[] = [];
 
+  // 1. Try relational table in Supabase
   try {
     let query = db
       .from("registered_packers")
@@ -194,12 +236,12 @@ export async function getAllPackers(params?: {
       .order("created_at", { ascending: false });
 
     if (params?.userId) {
-      query = query.eq("user_id", params.userId);
+      query = query.or(`user_id.is.null,user_id.eq.${params.userId}`);
     }
 
     const { data, error } = await query;
 
-    if (!error && Array.isArray(data)) {
+    if (!error && Array.isArray(data) && data.length > 0) {
       packers = data.map((d) => ({
         id: d.id,
         user_id: d.user_id,
@@ -217,17 +259,29 @@ export async function getAllPackers(params?: {
         created_at: d.created_at,
         updated_at: d.updated_at,
       }));
-    } else {
-      // Fallback if table not migrated yet
-      packers = readLocalPackers();
-      if (params?.userId) {
-        packers = packers.filter((p) => p.user_id === params.userId);
-      }
+      inMemoryPackers = packers;
     }
   } catch {
-    packers = readLocalPackers();
+    // Relational table not migrated yet
+  }
+
+  // 2. If table is empty or missing, use cloud Supabase Storage / in-memory cache
+  if (packers.length === 0) {
+    if (!inMemoryPackers) {
+      const cloudData = await fetchCloudPackers();
+      if (cloudData && cloudData.length > 0) {
+        inMemoryPackers = cloudData;
+      } else {
+        inMemoryPackers = readLocalPackers();
+        // Seed cloud storage for future requests
+        persistCloudPackers(inMemoryPackers).catch(() => {});
+      }
+    }
+    packers = [...inMemoryPackers];
+
+    // Filter by userId without dropping global / statutory seed packers
     if (params?.userId) {
-      packers = packers.filter((p) => p.user_id === params.userId);
+      packers = packers.filter((p) => !p.user_id || p.user_id === params.userId);
     }
   }
 
@@ -286,12 +340,12 @@ export async function getPackerById(
       };
     }
   } catch {
-    // Ignore and proceed to local fallback
+    // Ignore and proceed to fallback
   }
 
-  // Local fallback lookup
-  const localList = readLocalPackers();
-  const found = localList.find(
+  // Cloud / local fallback lookup
+  const allPackers = await getAllPackers();
+  const found = allPackers.find(
     (p) =>
       p.id === id ||
       p.registration_number.toUpperCase() === id.toUpperCase() ||
@@ -319,7 +373,7 @@ export async function findPackerByNameOrReg(
 
 /**
  * Create a new registered packer entity under Rule 27.
- * Enforces deduplication and returns existing record if already registered.
+ * Enforces deduplication, inserts into Supabase table (if available), and backs up to Supabase Storage.
  */
 export async function createPacker(
   input: CreatePackerInput
@@ -366,7 +420,7 @@ export async function createPacker(
     updated_at: now,
   };
 
-  // Attempt Supabase insert
+  // Attempt Supabase relational insert
   try {
     const { data, error } = await db
       .from("registered_packers")
@@ -395,12 +449,16 @@ export async function createPacker(
       newRecord.id = data.id;
     }
   } catch (err) {
-    console.warn("Supabase registered_packers insert failed, persisting locally:", err);
+    console.warn("[STORAGE] Supabase registered_packers insert failed, persisting to cloud storage:", err);
   }
 
-  // Persist locally as well to ensure immediate consistency
-  const localList = readLocalPackers();
-  const updatedList = [newRecord, ...localList.filter((p) => p.id !== newRecord.id)];
+  // Update in-memory cache
+  const currentList = inMemoryPackers || (await fetchCloudPackers()) || readLocalPackers();
+  const updatedList = [newRecord, ...currentList.filter((p) => p.id !== newRecord.id)];
+  inMemoryPackers = updatedList;
+
+  // Persist to Supabase Storage and local disk
+  await persistCloudPackers(updatedList);
   writeLocalPackers(updatedList);
 
   return { entity: newRecord, isDuplicate: false };
@@ -447,40 +505,136 @@ export async function ensurePackerForInspection(
   return entity;
 }
 
-const LINKS_FILE = path.join(process.cwd(), ".data", "inspection_companies.json");
+/**
+ * Fetches inspection company link mapping from Supabase Storage.
+ */
+async function fetchCloudLinks(): Promise<Record<string, { companyId: string; companyName: string }> | null> {
+  const db = supabaseAdmin || supabase;
+  try {
+    const { data, error } = await db.storage
+      .from(STORAGE_BUCKET)
+      .download(STORAGE_LINKS_PATH);
 
-export function recordInspectionCompanyLink(
+    if (!error && data) {
+      const text = await data.text();
+      const parsed = JSON.parse(text);
+      if (typeof parsed === "object" && parsed !== null) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn("[STORAGE] Cloud links download exception:", err);
+  }
+  return null;
+}
+
+/**
+ * Uploads inspection company link mapping to Supabase Storage.
+ */
+async function persistCloudLinks(links: Record<string, { companyId: string; companyName: string }>): Promise<void> {
+  const db = supabaseAdmin || supabase;
+  try {
+    const buf = Buffer.from(JSON.stringify(links, null, 2), "utf8");
+    await db.storage
+      .from(STORAGE_BUCKET)
+      .upload(STORAGE_LINKS_PATH, buf, {
+        upsert: true,
+        contentType: "application/json",
+      });
+  } catch (err) {
+    console.warn("[STORAGE] Cloud links persist exception:", err);
+  }
+}
+
+/**
+ * Records an inspection -> company link with cloud persistence across Vercel & local environments.
+ */
+export async function recordInspectionCompanyLink(
   inspectionId: string,
   companyId: string,
   companyName: string
-): void {
+): Promise<void> {
+  if (!inspectionId || !companyName) return;
+
+  // 1. Update in-memory map immediately
+  if (!inMemoryLinks) {
+    inMemoryLinks = (await fetchCloudLinks()) || {};
+    try {
+      if (fs.existsSync(LINKS_FILE)) {
+        const local = JSON.parse(fs.readFileSync(LINKS_FILE, "utf8"));
+        inMemoryLinks = { ...local, ...inMemoryLinks };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  inMemoryLinks[inspectionId] = { companyId, companyName };
+
+  // 2. Persist to Supabase Storage asynchronously
+  await persistCloudLinks(inMemoryLinks);
+
+  // 3. Try local file if filesystem is writable
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    let map: Record<string, { companyId: string; companyName: string }> = {};
-    if (fs.existsSync(LINKS_FILE)) {
-      map = JSON.parse(fs.readFileSync(LINKS_FILE, "utf8"));
-    }
-    map[inspectionId] = { companyId, companyName };
-    fs.writeFileSync(LINKS_FILE, JSON.stringify(map, null, 2), "utf8");
-  } catch (err) {
-    console.warn("Could not write inspection company link fallback:", err);
+    fs.writeFileSync(LINKS_FILE, JSON.stringify(inMemoryLinks, null, 2), "utf8");
+  } catch {
+    // Expected on serverless Vercel
   }
 }
 
+/**
+ * Asynchronously retrieves all inspection -> company link mappings.
+ */
+export async function getAllInspectionCompanyLinksAsync(): Promise<
+  Record<string, { companyId: string; companyName: string }>
+> {
+  if (!inMemoryLinks) {
+    const cloudLinks = await fetchCloudLinks();
+    if (cloudLinks) {
+      inMemoryLinks = cloudLinks;
+    } else {
+      try {
+        if (fs.existsSync(LINKS_FILE)) {
+          inMemoryLinks = JSON.parse(fs.readFileSync(LINKS_FILE, "utf8"));
+        }
+      } catch {
+        inMemoryLinks = {};
+      }
+    }
+  }
+  return inMemoryLinks || {};
+}
+
+/**
+ * Synchronous getter for backwards compatibility.
+ */
 export function getAllInspectionCompanyLinks(): Record<
   string,
   { companyId: string; companyName: string }
 > {
+  if (inMemoryLinks) return inMemoryLinks;
   try {
     if (fs.existsSync(LINKS_FILE)) {
-      return JSON.parse(fs.readFileSync(LINKS_FILE, "utf8"));
+      inMemoryLinks = JSON.parse(fs.readFileSync(LINKS_FILE, "utf8"));
+      return inMemoryLinks || {};
     }
   } catch {
     // ignore
   }
-  return {};
+  return inMemoryLinks || {};
+}
+
+/**
+ * Get inspection company link for a specific inspection.
+ */
+export async function getInspectionCompanyLinkAsync(
+  inspectionId: string
+): Promise<{ companyId: string; companyName: string } | null> {
+  const all = await getAllInspectionCompanyLinksAsync();
+  return all[inspectionId] || null;
 }
 
 export function getInspectionCompanyLink(
@@ -489,4 +643,3 @@ export function getInspectionCompanyLink(
   const all = getAllInspectionCompanyLinks();
   return all[inspectionId] || null;
 }
-

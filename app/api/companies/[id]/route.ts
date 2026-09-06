@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase, supabaseAdmin } from "@/lib/supabase";
-import { getPackerById, getAllInspectionCompanyLinks } from "@/lib/companies/storage";
+import {
+  getPackerById,
+  getAllInspectionCompanyLinks,
+  getAllInspectionCompanyLinksAsync,
+} from "@/lib/companies/storage";
 import { isCompanyMatch } from "@/lib/companies/normalization";
 import { getAuthoritativeAuditLogs } from "@/lib/events/activity-event";
 import { ApiResponse } from "@/lib/types/common";
@@ -82,7 +86,7 @@ export async function GET(
       }
     }
 
-    const localLinks = getAllInspectionCompanyLinks();
+    const localLinks = await getAllInspectionCompanyLinksAsync();
 
     // 4. Match inspections belonging to this company
     const linkedInspections = (allInspections || []).filter((ins) => {
