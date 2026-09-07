@@ -152,7 +152,7 @@ class OCRSpaceProvider:
                 extra={
                     "provider": self.engine_name,
                     "engine": self.engine_version,
-                    "filename": "package.jpg",
+                    "upload_filename": "package.jpg",
                     "content_type": "image/jpeg",
                     "file_size_bytes": len(upload_bytes),
                     "original_dimensions": [original_width, original_height],
