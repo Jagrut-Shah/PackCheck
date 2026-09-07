@@ -64,7 +64,6 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
       if (data) {
         setInspection(data);
         if (
-          (data.extractedDeclarations && Object.keys(data.extractedDeclarations).length > 0) ||
           data.status === "MANUAL_REVIEW" ||
           data.status === "COMPLETED"
         ) {
