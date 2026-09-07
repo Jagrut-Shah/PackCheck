@@ -28,7 +28,6 @@ import { useToast } from "@/components/common/toast";
 interface ReviewPageProps {
   params: Promise<{ id: string }>;
 }
-
 interface FieldItemState {
   label: string;
   fieldKey: string;
@@ -364,20 +363,20 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
       {/* Badge legend strip */}
       <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-4 space-y-2.5">
         <p className="text-xs font-bold text-[#0F172A]">How to read this checklist:</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
-          <div className="flex items-start gap-2 bg-white rounded-md border border-[#FCA5A5] p-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-[11px]">
+          <div className="flex flex-col items-start gap-2 bg-white rounded-md border border-[#FCA5A5] p-2.5">
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#FEE2E2] text-[#991B1B] border border-[#FCA5A5] font-semibold shrink-0">✕ Action Needed</span>
             <span className="text-[#475569] leading-tight">Not found on label. Click ✏️ and type the value from the package.</span>
           </div>
-          <div className="flex items-start gap-2 bg-white rounded-md border border-[#FCD34D] p-2.5">
+          <div className="flex flex-col items-start gap-2 bg-white rounded-md border border-[#FCD34D] p-2.5">
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#FEF3C7] text-[#92400E] border border-[#FCD34D] font-semibold shrink-0">⚠ Please Review</span>
             <span className="text-[#475569] leading-tight">Partially read. Visually confirm it matches the package, or click ✏️ to fix.</span>
           </div>
-          <div className="flex items-start gap-2 bg-white rounded-md border border-[#86EFAC] p-2.5">
+          <div className="flex flex-col items-start gap-2 bg-white rounded-md border border-[#86EFAC] p-2.5">
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#DCFCE7] text-[#166534] border border-[#86EFAC] font-semibold shrink-0">✓ Verified</span>
             <span className="text-[#475569] leading-tight">Read with high confidence. No action needed unless you spot an error.</span>
           </div>
-          <div className="flex items-start gap-2 bg-white rounded-md border border-[#86EFAC] p-2.5">
+          <div className="flex flex-col items-start gap-2 bg-white rounded-md border border-[#86EFAC] p-2.5">
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#DCFCE7] text-[#166534] border border-[#86EFAC] font-semibold shrink-0">✓✓ Resolved</span>
             <span className="text-[#475569] leading-tight">You corrected this field. Your value will be used in the report.</span>
           </div>

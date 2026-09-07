@@ -5,6 +5,7 @@ import { Download, FileText, Printer, Check, AlertTriangle, ShieldCheck, XCircle
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { VerificationReportData } from "@/lib/types/report";
+import { supabase } from '@/lib/supabase';
 
 interface ReportSummaryViewProps {
   report: VerificationReportData;
@@ -29,31 +30,50 @@ export const ReportSummaryView: React.FC<ReportSummaryViewProps> = ({ report }) 
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const handleGeneratePdf = async () => {
-    setIsGenerating(true);
-    setDownloadError(null);
-    try {
-      const endpoint = `/api/inspections/${report.inspectionId}/report/pdf`;
-      const res = await fetch(endpoint);
-      if (!res.ok) {
-        throw new Error(`PDF generation returned status ${res.status}`);
-      }
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Inspection_Report_${(report.reportNumber || report.inspectionId).replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      setIsGenerated(true);
-    } catch (err) {
-      console.error("PDF download error:", err);
-      setDownloadError(err instanceof Error ? err.message : "Failed to download PDF report");
-    } finally {
-      setIsGenerating(false);
+  setIsGenerating(true);
+  setDownloadError(null);
+  try {
+    // Get auth token from Supabase
+    const { data: { session }, error: authError } = await supabase.auth.getSession();
+    
+    if (authError || !session?.access_token) {
+      throw new Error('Not authenticated. Please log in again.');
     }
-  };
+
+    const endpoint = `/api/inspections/${report.inspectionId}/report/pdf`;
+    
+    // Send with auth header
+    const res = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!res.ok) {
+      const errorData = await res.text();
+      console.error(`PDF generation error (${res.status}):`, errorData);
+      throw new Error(`PDF generation returned status ${res.status}: ${errorData}`);
+    }
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Inspection_Report_${(report.reportNumber || report.inspectionId).replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    setIsGenerated(true);
+  } catch (err) {
+    console.error("PDF download error:", err);
+    setDownloadError(err instanceof Error ? err.message : "Failed to download PDF report");
+  } finally {
+    setIsGenerating(false);
+  }
+};
 
   const inspectionNum = report.inspectionNumber || report.inspectionId;
   const company = report.company || report.manufacturerOrPacker;
@@ -226,9 +246,8 @@ export const ReportSummaryView: React.FC<ReportSummaryViewProps> = ({ report }) 
         <div className="p-6 sm:p-8 space-y-6">
           {/* Section 1: Product & Compliance Verdict Banner */}
           <div
-            className={`p-5 rounded-xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 ${
-              isPass ? "bg-[#F0FDF4] border-[#86EFAC]" : "bg-[#FEF2F2] border-[#FCA5A5]"
-            }`}
+            className={`p-5 rounded-xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 ${isPass ? "bg-[#F0FDF4] border-[#86EFAC]" : "bg-[#FEF2F2] border-[#FCA5A5]"
+              }`}
           >
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
@@ -339,20 +358,18 @@ export const ReportSummaryView: React.FC<ReportSummaryViewProps> = ({ report }) 
                   return (
                     <div
                       key={idx}
-                      className={`p-3.5 rounded-lg border text-xs ${
-                        isCritical
-                          ? "border-[#FCA5A5] bg-[#FEF2F2]/50 text-[#0F172A]"
-                          : "border-[#FCD34D] bg-[#FFFBEB]/50 text-[#0F172A]"
-                      }`}
+                      className={`p-3.5 rounded-lg border text-xs ${isCritical
+                        ? "border-[#FCA5A5] bg-[#FEF2F2]/50 text-[#0F172A]"
+                        : "border-[#FCD34D] bg-[#FFFBEB]/50 text-[#0F172A]"
+                        }`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <span
-                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                              isCritical
-                                ? "bg-[#FEE2E2] text-[#991B1B] border-[#FCA5A5]"
-                                : "bg-[#FEF3C7] text-[#92400E] border-[#FCD34D]"
-                            }`}
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${isCritical
+                              ? "bg-[#FEE2E2] text-[#991B1B] border-[#FCA5A5]"
+                              : "bg-[#FEF3C7] text-[#92400E] border-[#FCD34D]"
+                              }`}
                           >
                             {f.severity || "MAJOR"}
                           </span>
