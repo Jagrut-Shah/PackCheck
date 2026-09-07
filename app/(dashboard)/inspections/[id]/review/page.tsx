@@ -78,6 +78,9 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
         }
         setHasNoExtraction(false);
 
+        const packingDateDetected = decl.manufacturingOrPackingDate?.value?.declarationType === "PACKING";
+        const useByDateDetected = decl.expiryOrBestBeforeDate?.value?.declarationType === "USE_BY";
+
         setFields({
           productName: {
             label: "Product / Generic / Common Name",
@@ -169,7 +172,7 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
             confidenceLevel: decl.mrp?.value?.rawText ? (decl.mrp?.confidenceLevel || "HIGH") : "LOW",
             sourceImageAngle: "MRP_PANEL",
           },
-          manufacturingDate: {
+          ...(!packingDateDetected && { manufacturingDate: {
             label: "Month & Year of Manufacture",
             fieldKey: "manufacturingDate",
             ruleReference: STATUTORY_REFERENCES.RULE_6_1_D.rule,
@@ -178,8 +181,8 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
             confidenceLevel: decl.manufacturingOrPackingDate?.value?.formattedText ? (decl.manufacturingOrPackingDate?.confidenceLevel || "HIGH") : "LOW",
             sourceImageAngle: "MRP_PANEL",
             isOverridden: decl.manufacturingOrPackingDate?.isInspectorOverridden,
-          },
-          packingDate: {
+          }}),
+          ...(packingDateDetected && { packingDate: {
             label: "Month & Year of Pre-Packing",
             fieldKey: "packingDate",
             ruleReference: "Rule 6(1)(d)",
@@ -187,7 +190,7 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
             confidenceScore: (decl.manufacturingOrPackingDate?.value?.declarationType === "PACKING" && decl.manufacturingOrPackingDate?.value?.formattedText) ? 0.91 : 0,
             confidenceLevel: (decl.manufacturingOrPackingDate?.value?.declarationType === "PACKING" && decl.manufacturingOrPackingDate?.value?.formattedText) ? "HIGH" : "LOW",
             sourceImageAngle: "MRP_PANEL",
-          },
+          }}),
           importDate: {
             label: "Month & Year of Importation",
             fieldKey: "importDate",
@@ -197,7 +200,7 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
             confidenceLevel: "HIGH",
             sourceImageAngle: "OTHER",
           },
-          bestBefore: {
+          ...(!useByDateDetected && { bestBefore: {
             label: "Best Before / Use-By Date",
             fieldKey: "bestBefore",
             ruleReference: "Rule 6(1)(d) Proviso",
@@ -205,8 +208,8 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
             confidenceScore: decl.expiryOrBestBeforeDate?.value?.formattedText ? (decl.expiryOrBestBeforeDate?.confidence ?? 0.88) : 0,
             confidenceLevel: decl.expiryOrBestBeforeDate?.value?.formattedText ? (decl.expiryOrBestBeforeDate?.confidenceLevel || "HIGH") : "LOW",
             sourceImageAngle: "MRP_PANEL",
-          },
-          useBy: {
+          }}),
+          ...(useByDateDetected && { useBy: {
             label: "Use-By / Expiry Date (Perishables)",
             fieldKey: "useBy",
             ruleReference: "Rule 6(1)(d) Clause 3",
@@ -214,7 +217,7 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
             confidenceScore: (decl.expiryOrBestBeforeDate?.value?.declarationType === "USE_BY" && decl.expiryOrBestBeforeDate?.value?.formattedText) ? 0.86 : 0,
             confidenceLevel: (decl.expiryOrBestBeforeDate?.value?.declarationType === "USE_BY" && decl.expiryOrBestBeforeDate?.value?.formattedText) ? "MEDIUM" : "LOW",
             sourceImageAngle: "MRP_PANEL",
-          },
+          }}),
           consumerCare: {
             label: "Consumer Care Grievance Mechanism",
             fieldKey: "consumerCare",
