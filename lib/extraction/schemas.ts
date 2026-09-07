@@ -16,7 +16,7 @@ export const zodNetQuantitySchema = z.object({
 export const zodMRPSchema = z.object({
   amountInRupees: z.number().nonnegative(),
   isInclusiveOfAllTaxes: z.boolean(),
-  currencySymbol: z.string(),
+  currencySymbol: z.string().nullish(),
   rawText: z.string(),
 });
 
