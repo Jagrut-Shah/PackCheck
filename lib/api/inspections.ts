@@ -634,18 +634,11 @@ export function deserializeBackendFieldsToDeclarations(
         amountInRupees: uspAmount,
         unit: uspUnit,
         rawText: usp.value,
-<<<<<<< HEAD
-        isDeclared: Boolean(usp.value),
-      },
-      confidence: usp.confidence,
-      confidenceLevel: usp.confidence > 0.8 ? "HIGH" : usp.confidence > 0.4 ? "MEDIUM" : "LOW",
-=======
         isDeclared: isUspDeclared,
       },
       confidence: usp.confidence,
-      confidenceLevel: usp.confidence > 0.9 ? "HIGH" : "MEDIUM",
+      confidenceLevel: usp.confidence > 0.8 ? "HIGH" : usp.confidence > 0.4 ? "MEDIUM" : "LOW",
       isInspectorOverridden: usp.isOverridden,
->>>>>>> ea5a66b (Fix compliance status update for MRP and Unit Sale Price manual review corrections)
     },
     sizesOrDimensions: {
       field: "dimensions",

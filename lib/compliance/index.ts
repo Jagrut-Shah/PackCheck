@@ -167,13 +167,8 @@ export async function evaluateCompliance(
     mrpObserved = mrpObserved || "Missing / Invalid";
   } else if (mrpAmount > 0 && hasTaxNotice) {
     mrpResult = "PASS";
-<<<<<<< HEAD
-    mrpExplanation = `Maximum Retail Price declared with required tax notice: ${mrpField.value.rawText}.`;
-  } else {
-=======
     mrpExplanation = `Maximum Retail Price declared with statutory tax notice: ${mrpObserved}.`;
   } else if (mrpAmount > 0 && !hasTaxNotice) {
->>>>>>> ea5a66b (Fix compliance status update for MRP and Unit Sale Price manual review corrections)
     mrpResult = "MANUAL_REVIEW";
     mrpExplanation = `Maximum Retail Price declared (${mrpObserved}) but missing explicit 'inclusive of all taxes' notice.`;
   } else if (hasTaxNotice || mrpField.isInspectorOverridden) {
