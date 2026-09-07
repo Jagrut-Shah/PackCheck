@@ -19,6 +19,9 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const routeStartTime = Date.now();
+  console.info("[OCR_ROUTE_START] OCR route invoked", {
+    inspectionId: (await context.params).id,
+  });
   const db = supabaseAdmin || supabase;
   let userId: string | undefined;
   try {

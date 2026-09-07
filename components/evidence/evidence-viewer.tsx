@@ -115,11 +115,11 @@ export const EvidenceViewer: React.FC<EvidenceViewerProps> = ({
             ref={canvasRef}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
-            className={`relative mt-3 rounded-lg overflow-hidden border border-[#334155] bg-[#090D16] min-h-[380px] flex items-center justify-center select-none ${
+            className={`relative mt-3 rounded-lg overflow-hidden border border-[#334155] bg-[#090D16] min-h-95 flex items-center justify-center select-none ${
               isLoupeActive ? "cursor-crosshair" : ""
             }`}
           >
-            <div className="relative w-full h-[420px] bg-[#0F172A] flex flex-col items-center justify-center p-6 text-center overflow-hidden">
+            <div className="relative w-full h-105 bg-[#0F172A] flex flex-col items-center justify-center p-6 text-center overflow-hidden">
               {/* Background preview image if valid URL exists */}
               {selectedImage?.url && !selectedImage.url.startsWith("/mock-images") ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -243,7 +243,7 @@ export const EvidenceViewer: React.FC<EvidenceViewerProps> = ({
                     <ImageIcon className="size-4" />
                   </div>
                   <div className="flex flex-col text-[11px] leading-tight">
-                    <span className="font-bold truncate max-w-[130px]">{img.fileName}</span>
+                    <span className="font-bold truncate max-w-32.5">{img.fileName}</span>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="text-[10px] text-[#94A3B8]">{img.angle}</span>
                       {img.qualityStatus === "RETAKE_REQUIRED" && (
@@ -302,7 +302,7 @@ export const EvidenceViewer: React.FC<EvidenceViewerProps> = ({
             </span>
           </div>
 
-          <div className="flex flex-col gap-2 mt-3 max-h-[380px] overflow-y-auto pr-1">
+          <div className="flex flex-col gap-2 mt-3 max-h-95 overflow-y-auto pr-1">
             {ocrData?.blocks.length === 0 ? (
               <p className="text-xs text-[#94A3B8] p-4 text-center">No text blocks detected for this image.</p>
             ) : (

@@ -154,6 +154,7 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
           setActiveStage(3);
         } else if (activeStage === 3) {
           // Stage 3: Reading package labels (Text extraction)
+          console.info("[PROCESSING_STAGE_3] Starting OCR request", { inspectionId });
           const ocrRes = await runServerOCR(inspectionId);
           if (isCancelled) return;
           setOcrResult(ocrRes);
@@ -283,7 +284,7 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
         </div>
         <div className="h-2 w-full rounded-full bg-[#F1F5F9] overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] transition-all duration-300 rounded-full"
+            className="h-full bg-linear-to-r from-[#2563EB] to-[#1D4ED8] transition-all duration-300 rounded-full"
             style={{ width: `${progressPercent}%` }}
           />
         </div>
@@ -291,7 +292,7 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Side: Package Inspection Preview Card */}
-        <div className="lg:col-span-5 rounded-xl border border-[#E2E8F0] bg-white p-5 shadow-2xs flex flex-col justify-between overflow-hidden relative min-h-[480px]">
+        <div className="lg:col-span-5 rounded-xl border border-[#E2E8F0] bg-white p-5 shadow-2xs flex flex-col justify-between overflow-hidden relative min-h-120">
           {/* Card Header */}
           <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
             <div className="flex items-center gap-2">
@@ -317,7 +318,7 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
           </div>
 
           {/* Clean Inspection Viewport */}
-          <div className="relative flex-1 my-3 rounded-xl bg-gradient-to-b from-[#F8FAFC] to-[#F1F5F9]/80 border border-[#E2E8F0] overflow-hidden flex flex-col items-center justify-center p-4 min-h-[290px]">
+          <div className="relative flex-1 my-3 rounded-xl bg-linear-to-b from-[#F8FAFC] to-[#F1F5F9]/80 border border-[#E2E8F0] overflow-hidden flex flex-col items-center justify-center p-4 min-h-72.5">
             {/* Subtle Grid Pattern Accent */}
             <div
               className="absolute inset-0 opacity-40 pointer-events-none"
@@ -328,7 +329,7 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
             />
 
             {/* Package Photo or Card Silhouette */}
-            <div className="relative z-10 w-full max-w-[260px] rounded-xl border border-[#E2E8F0] bg-white p-3.5 shadow-xs flex flex-col items-center gap-3">
+            <div className="relative z-10 w-full max-w-65 rounded-xl border border-[#E2E8F0] bg-white p-3.5 shadow-xs flex flex-col items-center gap-3">
               {inspection?.images?.[0]?.url && !inspection.images[0].url.startsWith("/mock-images") ? (
                 <div className="relative w-full h-36 rounded-lg overflow-hidden border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -399,7 +400,7 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
 
               {/* Light Modern Scanner Animation Line */}
               {!isCompleted && !isAborted && (
-                <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-[#2563EB] to-transparent shadow-[0_0_12px_rgba(37,99,235,0.4)] pointer-events-none scan-laser-line z-20">
+                <div className="absolute inset-x-0 h-1 bg-linear-to-r from-transparent via-[#2563EB] to-transparent shadow-[0_0_12px_rgba(37,99,235,0.4)] pointer-events-none scan-laser-line z-20">
                   <div className="absolute right-2 -top-3 text-[9px] font-semibold text-white bg-[#2563EB] px-1.5 py-0.5 rounded shadow-xs">
                     Scanning
                   </div>
@@ -410,7 +411,7 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
 
           {/* Card Footer Status */}
           <div className="flex items-center justify-between text-xs text-[#475569] pt-2 border-t border-[#F1F5F9]">
-            <span className="truncate max-w-[200px]">
+            <span className="truncate max-w-50">
               {inspection?.product || "Packaged Commodity"}
             </span>
             <span className="font-semibold text-[#2563EB]">
