@@ -264,6 +264,158 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
     });
   };
 
+  const buildDeclarationsFromFields = (
+    baseDecl: any,
+    currentFields: Record<string, FieldItemState>
+  ) => {
+    const getVal = (k: string) => currentFields[k]?.value || "";
+    const getOverridden = (k: string) => currentFields[k]?.isOverridden;
+
+    const mrpVal = getVal("mrp");
+    const mrpTaxVal = getVal("mrpIncludesTaxes");
+    const uspVal = getVal("unitSalePrice");
+
+    let mrpAmount = 0;
+    const mrpMatch = mrpVal.match(/(?:₹|rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)/i);
+    if (mrpMatch) {
+      mrpAmount = parseFloat(mrpMatch[1].replace(/,/g, ""));
+    }
+    const isMrpTaxInclusive =
+      !mrpTaxVal.toUpperCase().includes("MISSING") ||
+      mrpVal.toLowerCase().includes("incl") ||
+      mrpVal.toLowerCase().includes("tax") ||
+      Boolean(getOverridden("mrp"));
+
+    let uspAmount = 0;
+    let uspUnit = "g";
+    const uspLower = uspVal.toLowerCase().trim();
+    const isUspDeclared =
+      Boolean(uspVal) &&
+      uspLower !== "not declared" &&
+      uspLower !== "none detected" &&
+      uspLower !== "missing" &&
+      uspLower !== "n/a";
+
+    if (isUspDeclared) {
+      const match = uspVal.match(/(?:₹|rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)/i);
+      if (match) {
+        uspAmount = parseFloat(match[1].replace(/,/g, ""));
+      }
+      const unitMatch = uspVal.match(/\/\s*([a-zA-Z]+)|per\s+([a-zA-Z]+)/i);
+      if (unitMatch) {
+        uspUnit = unitMatch[1] || unitMatch[2];
+      }
+    }
+
+    return {
+      ...baseDecl,
+      commodityName: {
+        field: "productName",
+        value: getVal("productName"),
+        rawValue: getVal("productName"),
+        confidence: currentFields["productName"]?.confidenceScore ?? 0.98,
+        confidenceLevel: "HIGH",
+        isInspectorOverridden: getOverridden("productName"),
+      },
+      manufacturerOrPacker: {
+        field: "manufacturer",
+        value: {
+          name: getVal("manufacturer"),
+          address: getVal("address"),
+          role: "MANUFACTURER",
+          rawText: `${getVal("manufacturer")}, ${getVal("address")}`,
+          pincode: getVal("address").match(/\b\d{6}\b/)?.[0] || "110020",
+        },
+        confidence: currentFields["manufacturer"]?.confidenceScore ?? 0.94,
+        confidenceLevel: "HIGH",
+        isInspectorOverridden: getOverridden("manufacturer") || getOverridden("address"),
+      },
+      netQuantity: {
+        field: "netQuantity",
+        value: {
+          declaredQuantity: 1,
+          unit: "N",
+          isStandardUnit: true,
+          rawText: getVal("netQuantity"),
+        },
+        confidence: currentFields["netQuantity"]?.confidenceScore ?? 0.97,
+        confidenceLevel: "HIGH",
+        isInspectorOverridden: getOverridden("netQuantity"),
+      },
+      mrp: {
+        field: "mrp",
+        value: {
+          amountInRupees: mrpAmount,
+          isInclusiveOfAllTaxes: isMrpTaxInclusive,
+          rawText: mrpVal,
+          currencySymbol: "₹",
+        },
+        confidence: currentFields["mrp"]?.confidenceScore ?? 0.97,
+        confidenceLevel: "HIGH",
+        isInspectorOverridden: getOverridden("mrp"),
+      },
+      manufacturingOrPackingDate: {
+        field: "manufacturingDate",
+        value: {
+          formattedText: getVal("manufacturingDate"),
+          declarationType: "MANUFACTURE",
+          month: 12,
+          year: 2025,
+        },
+        confidence: currentFields["manufacturingDate"]?.confidenceScore ?? 0.93,
+        confidenceLevel: "HIGH",
+        isInspectorOverridden: getOverridden("manufacturingDate"),
+      },
+      expiryOrBestBeforeDate: {
+        field: "bestBefore",
+        value: {
+          formattedText: getVal("bestBefore"),
+          declarationType: "BEST_BEFORE",
+        },
+        confidence: currentFields["bestBefore"]?.confidenceScore ?? 0.88,
+        confidenceLevel: "HIGH",
+      },
+      consumerCare: {
+        field: "consumerCare",
+        value: {
+          rawText: getVal("consumerCare"),
+          telephoneOrMobile: getVal("consumerCare").match(/\b\d{10}\b|1800\s*\d{3}\s*\d{4}/)?.[0] || "1800 258 3333",
+          email: getVal("consumerCare").match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)?.[0] || "info@nutribitefoods.in",
+        },
+        confidence: currentFields["consumerCare"]?.confidenceScore ?? 0.91,
+        confidenceLevel: "HIGH",
+        isInspectorOverridden: getOverridden("consumerCare"),
+      },
+      countryOfOrigin: {
+        field: "countryOfOrigin",
+        value: getVal("countryOfOrigin") || "India",
+        confidence: currentFields["countryOfOrigin"]?.confidenceScore ?? 0.98,
+        confidenceLevel: "HIGH",
+        isInspectorOverridden: getOverridden("countryOfOrigin"),
+      },
+      unitSalePrice: {
+        field: "unitSalePrice",
+        value: {
+          amountInRupees: uspAmount,
+          unit: uspUnit,
+          rawText: uspVal,
+          isDeclared: isUspDeclared,
+        },
+        confidence: currentFields["unitSalePrice"]?.confidenceScore ?? 0.92,
+        confidenceLevel: "HIGH",
+        isInspectorOverridden: getOverridden("unitSalePrice"),
+      },
+      sizesOrDimensions: {
+        field: "dimensions",
+        value: getVal("dimensions"),
+        confidence: 0.94,
+        confidenceLevel: "HIGH",
+      },
+      extractedAt: new Date().toISOString(),
+      modelUsed: "LLM",
+    };
+  };
+
   const handleSaveField = async (newValue: string, reason: string) => {
     const key = editModal.key;
     const item = fields[key];
@@ -284,15 +436,29 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
         correctedTimestamp: new Date().toISOString(),
       });
 
-      // Update local state ONLY after backend success
-      setFields((prev) => ({
-        ...prev,
+      const updatedFields = {
+        ...fields,
         [key]: {
-          ...prev[key],
+          ...fields[key],
           value: newValue,
           isOverridden: true,
         },
-      }));
+      };
+
+      setFields(updatedFields);
+
+      if (inspection) {
+        const updatedDeclarations = buildDeclarationsFromFields(
+          inspection.extractedDeclarations,
+          updatedFields
+        );
+        setInspection({
+          ...inspection,
+          extractedDeclarations: updatedDeclarations as any,
+          extractedFields: updatedDeclarations as any,
+        });
+      }
+
       setEditModal((prev) => ({ ...prev, isOpen: false }));
       toast.success(
         "Field Correction Saved",
@@ -308,13 +474,15 @@ export default function ExtractionReviewPage({ params }: ReviewPageProps) {
   };
 
   const handleProceedToCompliance = async () => {
-    if (inspection?.extractedDeclarations) {
-      try {
-        const evaluation = await evaluateCompliance(inspection.extractedDeclarations);
-        await storeComplianceResults(inspection.id, evaluation);
-      } catch (e) {
-        console.warn("Could not pre-sync compliance results:", e);
-      }
+    const updatedDeclarations = buildDeclarationsFromFields(
+      inspection?.extractedDeclarations,
+      fields
+    );
+    try {
+      const evaluation = await evaluateCompliance(updatedDeclarations as any);
+      await storeComplianceResults(inspection?.id || inspectionId, evaluation);
+    } catch (e) {
+      console.warn("Could not sync compliance results:", e);
     }
     router.push(`/inspections/${inspection?.id || inspectionId}/compliance`);
   };

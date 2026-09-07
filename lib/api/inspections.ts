@@ -496,6 +496,40 @@ export function deserializeBackendFieldsToDeclarations(
   const usp = getField("unitSalePrice", "");
   const dim = getField("dimensions", "");
 
+  // Parse MRP numeric amount and tax indicator
+  let mrpAmount = 0;
+  const mrpMatch = mrp.value.match(/(?:₹|rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)/i);
+  if (mrpMatch) {
+    mrpAmount = parseFloat(mrpMatch[1].replace(/,/g, ""));
+  }
+  const isMrpTaxInclusive =
+    !mrpTax.value.toUpperCase().includes("MISSING") ||
+    mrp.value.toLowerCase().includes("incl") ||
+    mrp.value.toLowerCase().includes("tax") ||
+    mrp.isOverridden;
+
+  // Parse USP numeric amount and unit
+  let uspAmount = 0;
+  let uspUnit = "g";
+  const uspLower = usp.value.toLowerCase().trim();
+  const isUspDeclared =
+    Boolean(usp.value) &&
+    uspLower !== "not declared" &&
+    uspLower !== "none detected" &&
+    uspLower !== "missing" &&
+    uspLower !== "n/a";
+
+  if (isUspDeclared) {
+    const match = usp.value.match(/(?:₹|rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)/i);
+    if (match) {
+      uspAmount = parseFloat(match[1].replace(/,/g, ""));
+    }
+    const unitMatch = usp.value.match(/\/\s*([a-zA-Z]+)|per\s+([a-zA-Z]+)/i);
+    if (unitMatch) {
+      uspUnit = unitMatch[1] || unitMatch[2];
+    }
+  }
+
   return {
     commodityName: {
       field: "productName",
@@ -545,8 +579,8 @@ export function deserializeBackendFieldsToDeclarations(
     mrp: {
       field: "mrp",
       value: {
-        amountInRupees: 0,
-        isInclusiveOfAllTaxes: mrpTax.value ? !mrpTax.value.toUpperCase().includes("MISSING") : false,
+        amountInRupees: mrpAmount,
+        isInclusiveOfAllTaxes: isMrpTaxInclusive,
         rawText: mrp.value,
         currencySymbol: "₹",
       },
@@ -554,8 +588,8 @@ export function deserializeBackendFieldsToDeclarations(
       confidenceLevel: mrp.confidence > 0.8 ? "HIGH" : mrp.confidence > 0.4 ? "MEDIUM" : "LOW",
       isInspectorOverridden: mrp.isOverridden,
       originalExtractedValue: {
-        amountInRupees: 0,
-        isInclusiveOfAllTaxes: mrpTax.originalValue ? !mrpTax.originalValue.toUpperCase().includes("MISSING") : false,
+        amountInRupees: mrpAmount,
+        isInclusiveOfAllTaxes: isMrpTaxInclusive,
         rawText: mrp.originalValue,
         currencySymbol: "₹",
       },
@@ -597,13 +631,21 @@ export function deserializeBackendFieldsToDeclarations(
     unitSalePrice: {
       field: "unitSalePrice",
       value: {
-        amountInRupees: 0,
-        unit: "unit",
+        amountInRupees: uspAmount,
+        unit: uspUnit,
         rawText: usp.value,
+<<<<<<< HEAD
         isDeclared: Boolean(usp.value),
       },
       confidence: usp.confidence,
       confidenceLevel: usp.confidence > 0.8 ? "HIGH" : usp.confidence > 0.4 ? "MEDIUM" : "LOW",
+=======
+        isDeclared: isUspDeclared,
+      },
+      confidence: usp.confidence,
+      confidenceLevel: usp.confidence > 0.9 ? "HIGH" : "MEDIUM",
+      isInspectorOverridden: usp.isOverridden,
+>>>>>>> ea5a66b (Fix compliance status update for MRP and Unit Sale Price manual review corrections)
     },
     sizesOrDimensions: {
       field: "dimensions",

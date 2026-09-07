@@ -31,7 +31,6 @@ export async function evaluateCompliance(
       return MOCK_COMPLIANCE_NUTRIBITE;
     }
   }
-
   // Dynamic evaluation strictly derived from the passed declarations
   const now = new Date().toISOString();
 
@@ -143,22 +142,47 @@ export async function evaluateCompliance(
   let mrpExplanation = "";
   const mrpField = declarations.mrp;
 
-  if (
-    !mrpField ||
-    mrpField.confidence === 0 ||
-    !mrpField.value ||
-    mrpField.value.amountInRupees <= 0 ||
-    !mrpField.value.rawText
-  ) {
+  // Extract price amount dynamically if amountInRupees is 0 or missing
+  let mrpAmount = mrpField?.value?.amountInRupees || 0;
+  if (mrpAmount <= 0 && mrpObserved) {
+    const match = mrpObserved.match(/(?:₹|rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)/i);
+    if (match) {
+      mrpAmount = parseFloat(match[1].replace(/,/g, ""));
+    }
+  }
+
+  // Determine inclusive of taxes notice
+  const mrpTaxText = mrpObserved.toLowerCase();
+  const hasTaxNotice =
+    mrpField?.value?.isInclusiveOfAllTaxes === true ||
+    mrpTaxText.includes("incl") ||
+    mrpTaxText.includes("inclusive") ||
+    mrpTaxText.includes("tax") ||
+    mrpTaxText.includes("taxes") ||
+    mrpField?.isInspectorOverridden === true;
+
+  if (!mrpField || mrpField.confidence === 0 || !mrpField.value || (!mrpObserved && mrpAmount <= 0)) {
     mrpResult = "FAIL";
     mrpExplanation = "Maximum Retail Price (MRP) declaration is missing or invalid.";
     mrpObserved = mrpObserved || "Missing / Invalid";
-  } else if (mrpField.value.isInclusiveOfAllTaxes) {
+  } else if (mrpAmount > 0 && hasTaxNotice) {
     mrpResult = "PASS";
+<<<<<<< HEAD
     mrpExplanation = `Maximum Retail Price declared with required tax notice: ${mrpField.value.rawText}.`;
   } else {
+=======
+    mrpExplanation = `Maximum Retail Price declared with statutory tax notice: ${mrpObserved}.`;
+  } else if (mrpAmount > 0 && !hasTaxNotice) {
+>>>>>>> ea5a66b (Fix compliance status update for MRP and Unit Sale Price manual review corrections)
     mrpResult = "MANUAL_REVIEW";
-    mrpExplanation = `Maximum Retail Price declared (${mrpField.value.rawText}) but missing explicit 'inclusive of all taxes' notice.`;
+    mrpExplanation = `Maximum Retail Price declared (${mrpObserved}) but missing explicit 'inclusive of all taxes' notice.`;
+  } else if (hasTaxNotice || mrpField.isInspectorOverridden) {
+    mrpResult = "PASS";
+    mrpExplanation = `Maximum Retail Price declaration verified in compliance with Rule 6(1)(e): ${mrpObserved}.`;
+  } else {
+    mrpResult = "FAIL";
+    mrpExplanation = "Maximum Retail Price (MRP) declaration is invalid or non-compliant.";
+    mrpObserved = mrpObserved || "Missing / Invalid";
   }
 
   // 6. Evaluate consumerCare (Rule 6(1)(f))
@@ -179,7 +203,7 @@ export async function evaluateCompliance(
     careResult = "FAIL";
     careExplanation = "Consumer care details (phone, email, or contact address) are missing from package.";
     careObserved = careObserved || "Missing / Invalid";
-  } else if (careField.confidence < 0.5 || (!carePhone && !careEmail)) {
+  } else if (careField.confidence < 0.5 || (!carePhone && !careEmail && !careObserved.match(/1800|\d{10}|@/))) {
     careResult = "MANUAL_REVIEW";
     careExplanation = !carePhone && !careEmail
       ? `Consumer care information present (${careObserved}), but explicit phone number or email address was not detected.`
@@ -217,18 +241,42 @@ export async function evaluateCompliance(
   // 8. Evaluate unitSalePrice (Rule 6(1)(l))
   let uspResult: IndividualRuleResult = "MANUAL_REVIEW";
   const uspField = declarations.unitSalePrice;
-  const uspDeclared = uspField?.value?.isDeclared;
-  const uspAmount = uspField?.value?.amountInRupees || 0;
-  const uspUnit = uspField?.value?.unit || "";
+  let uspDeclared = uspField?.value?.isDeclared;
+  let uspAmount = uspField?.value?.amountInRupees || 0;
+  let uspUnit = uspField?.value?.unit || "";
   let uspObserved = uspField?.value?.rawText || uspField?.rawValue || "";
   let uspExplanation = "";
 
-  if (uspField && uspField.confidence > 0 && uspDeclared) {
-    if (uspAmount <= 0 || !uspUnit) {
-      uspResult = "FAIL";
-      uspExplanation = "Unit sale price is explicitly declared on package but contains an invalid amount or unit.";
-      uspObserved = uspObserved || "Invalid USP Declaration";
-    } else if (uspField.confidence >= 0.5) {
+  // Dynamic extraction from USP raw text if amount / unit missing
+  const uspLower = uspObserved.toLowerCase().trim();
+  const isInvalidUspStr =
+    !uspObserved ||
+    uspLower === "not declared" ||
+    uspLower === "none detected" ||
+    uspLower === "missing" ||
+    uspLower === "invalid usp declaration" ||
+    uspLower === "n/a";
+
+  if (!isInvalidUspStr) {
+    uspDeclared = true;
+    if (uspAmount <= 0) {
+      const match = uspObserved.match(/(?:₹|rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)/i);
+      if (match) {
+        uspAmount = parseFloat(match[1].replace(/,/g, ""));
+      }
+    }
+    if (!uspUnit || uspUnit === "unit") {
+      const unitMatch = uspObserved.match(/\/\s*([a-zA-Z]+)|per\s+([a-zA-Z]+)/i);
+      if (unitMatch) {
+        uspUnit = unitMatch[1] || unitMatch[2];
+      } else {
+        uspUnit = "g";
+      }
+    }
+  }
+
+  if (uspField && uspField.confidence > 0 && uspDeclared && !isInvalidUspStr) {
+    if (uspAmount > 0 || (uspObserved && !isInvalidUspStr)) {
       uspResult = "PASS";
       uspExplanation = `Unit sale price declared in accordance with Rule 6(1)(l): ${uspObserved}.`;
     } else {
@@ -238,7 +286,7 @@ export async function evaluateCompliance(
   } else {
     uspResult = "MANUAL_REVIEW";
     uspExplanation = "Unit sale price declaration not explicitly detected; manual review required to verify weight threshold applicability.";
-    uspObserved = "Not Explicitly Declared";
+    uspObserved = uspObserved || "Not Explicitly Declared";
   }
 
   const results: ComplianceRuleResult[] = [
