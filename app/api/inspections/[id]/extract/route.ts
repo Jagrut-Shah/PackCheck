@@ -60,6 +60,10 @@ export async function POST(
 
     const body = (await request.json().catch(() => ({}))) as ExtractDeclarationsRequestBody;
     const rawText = body.rawText ?? body.ocrResult?.rawText ?? "";
+    console.info("[EXTRACTION_ROUTE_START]", {
+      inspectionId,
+      rawTextLength: rawText.length,
+    });
 
     const ocrPayload: OCRResult = {
       id: body.ocrResult?.id || `ocr_${inspectionId}`,
@@ -89,6 +93,18 @@ export async function POST(
       ocrPayload,
       extractionCtx
     );
+    console.info("[EXTRACTION_ROUTE_RESULT]", {
+      inspectionId,
+      modelUsed: declarations.modelUsed,
+      populatedFields: [
+        declarations.commodityName?.value,
+        declarations.manufacturerOrPacker?.value?.name,
+        declarations.netQuantity?.value?.rawText,
+        declarations.mrp?.value?.rawText,
+        declarations.manufacturingOrPackingDate?.value?.formattedText,
+        declarations.expiryOrBestBeforeDate?.value?.formattedText,
+      ].filter(Boolean).length,
+    });
 
     try {
       const model = declarations.modelUsed || "Hybrid (Deterministic + Gemini 3.8 Flash)";

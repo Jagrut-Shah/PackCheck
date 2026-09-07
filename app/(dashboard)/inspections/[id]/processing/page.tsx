@@ -161,12 +161,28 @@ export default function ProcessingPage({ params }: ProcessingPageProps) {
         } else if (activeStage === 4) {
           // Stage 4: Identifying declarations
           const rawText = ocrResult?.rawText || inspection?.ocrResults?.[0]?.rawText || "";
+          console.info("[PROCESSING_STAGE_4] Starting declaration extraction", {
+            inspectionId,
+            rawTextLength: rawText.length,
+          });
           const extractionCtx = {
             productName: inspection?.product || inspection?.commodity?.commodityName,
             brandName: inspection?.commodity?.brandName,
             manufacturerName: inspection?.company || inspection?.commodity?.manufacturerName,
           };
           const declarations = await runServerExtraction(inspectionId, rawText, extractionCtx);
+          console.info("[PROCESSING_STAGE_4] Declaration extraction returned", {
+            inspectionId,
+            modelUsed: declarations.modelUsed,
+            populatedFields: [
+              declarations.commodityName?.value,
+              declarations.manufacturerOrPacker?.value?.name,
+              declarations.netQuantity?.value?.rawText,
+              declarations.mrp?.value?.rawText,
+              declarations.manufacturingOrPackingDate?.value?.formattedText,
+              declarations.expiryOrBestBeforeDate?.value?.formattedText,
+            ].filter(Boolean).length,
+          });
           if (isCancelled) return;
           setExtractedDeclarations(declarations);
           await storeExtractedFields(inspectionId, declarations);

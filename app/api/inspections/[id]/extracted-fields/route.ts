@@ -154,6 +154,11 @@ export async function POST(
     }
 
     const body = (await request.json()) as StoreFieldsRequest
+    console.info("[EXTRACTED_FIELDS_STORE_START]", {
+      inspectionId,
+      fieldCount: Array.isArray(body.fields) ? body.fields.length : 0,
+      fieldNames: Array.isArray(body.fields) ? body.fields.map((field) => field.field_name) : [],
+    })
 
     if (!body.fields || body.fields.length === 0) {
       return NextResponse.json(
@@ -211,6 +216,11 @@ export async function POST(
         { status: 500 }
       )
     }
+
+    console.info("[EXTRACTED_FIELDS_STORE_SUCCESS]", {
+      inspectionId,
+      fieldCount: fieldsToInsert.length,
+    })
 
     // Update inspection status
     const { error: updateError } = await supabase
