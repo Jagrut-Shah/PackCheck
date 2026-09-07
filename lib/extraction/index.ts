@@ -144,6 +144,7 @@ export async function extractDeclarationsFromOCR(
       parsed.manufacturerOrPacker.confidence > 0 ? parsed.manufacturerOrPacker : baseDeclarations.manufacturerOrPacker,
     netQuantity: parsed.netQuantity,
     manufacturingOrPackingDate: parsed.manufacturingOrPackingDate,
+    expiryOrBestBeforeDate: parsed.expiryOrBestBeforeDate,
     mrp: parsed.mrp,
     unitSalePrice: parsed.unitSalePrice,
     consumerCare: parsed.consumerCare,

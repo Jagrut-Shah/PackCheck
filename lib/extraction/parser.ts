@@ -35,6 +35,7 @@ export interface ParsedRawDeclarations {
   manufacturerOrPacker: ExtractedField<ManufacturerPackerDeclaration>;
   netQuantity: ExtractedField<NetQuantityDeclaration>;
   manufacturingOrPackingDate: ExtractedField<DateDeclaration>;
+  expiryOrBestBeforeDate: ExtractedField<DateDeclaration>;
   mrp: ExtractedField<MRPDeclaration>;
   unitSalePrice: ExtractedField<UnitSalePriceDeclaration>;
   consumerCare: ExtractedField<ConsumerCareDeclaration>;
@@ -398,8 +399,8 @@ const MONTH_NAMES: Record<string, number> = {
 export function parseManufacturingOrPackingDate(rawText: string): ExtractedField<DateDeclaration> {
   const lines = rawText.split("\n");
 
-  const dateNumericRegex = /(0[1-9]|1[0-2])\s*[\/\.-]\s*(20\d{2}|\d{2})/;
-  const dateMonthNameRegex = /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[\s\/\.-]+(20\d{2}|\d{2})/i;
+  const dateNumericRegex = /(?:(?:0?[1-9]|[12]\d|3[01])\s*[\/\.-]\s*)?(0?[1-9]|1[0-2])\s*[\/\.-]\s*(20\d{2}|\d{2})/;
+  const dateMonthNameRegex = /(?:\d{1,2}\s*[\/\.-]\s*)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[\s\/\.-]+(20\d{2}|\d{2})/i;
 
   const mfgKeywordRegex = /(?:mfg|mfd|manufactur)/i;
   const pkdKeywordRegex = /(?:pkd|packed|packing)/i;
@@ -521,6 +522,55 @@ export function parseManufacturingOrPackingDate(rawText: string): ExtractedField
       formattedText: "",
       declarationType: "MANUFACTURE",
     },
+    rawValue: "",
+    confidence: 0,
+    confidenceLevel: CONFIDENCE_LEVEL.LOW,
+    sourceType: "OCR_TEXT",
+  };
+}
+
+/** Parses expiry, best-before, and use-by month/year declarations. */
+export function parseExpiryOrBestBeforeDate(rawText: string): ExtractedField<DateDeclaration> {
+  const lines = rawText.split("\n").map((line) => line.trim()).filter(Boolean);
+  const numericDateRegex = /(?:(?:0?[1-9]|[12]\d|3[01])\s*[\/\.-]\s*)?(0?[1-9]|1[0-2])\s*[\/\.-]\s*(20\d{2}|\d{2})/;
+  const monthNameRegex = /(?:\d{1,2}\s*[\/\.-]\s*)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[\s\/\.-]+(20\d{2}|\d{2})/i;
+  const expiryKeywordRegex = /(?:exp(?:iry)?|best\s*(?:before|by)|use\s*by|consume\s*before|valid\s*(?:upto|until))/i;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const candidates = [line, lines[index + 1] || ""];
+    if (!expiryKeywordRegex.test(line)) continue;
+
+    for (const candidate of candidates) {
+      const numericMatch = candidate.match(numericDateRegex);
+      const nameMatch = candidate.match(monthNameRegex);
+      const month = numericMatch
+        ? parseInt(numericMatch[1], 10)
+        : nameMatch
+        ? MONTH_NAMES[nameMatch[1].toLowerCase()]
+        : 0;
+      const yearText = numericMatch?.[2] || nameMatch?.[2];
+      if (!month || !yearText) continue;
+
+      let year = parseInt(yearText, 10);
+      if (year < 100) year += 2000;
+      const formattedText = `${String(month).padStart(2, "0")}/${year}`;
+      const declarationType = /use\s*by|consume\s*before/i.test(line) ? "USE_BY" : "BEST_BEFORE";
+
+      return {
+        field: "expiryOrBestBeforeDate",
+        value: { month, year, formattedText, declarationType },
+        rawValue: `${line} ${candidate !== line ? candidate : ""}`.trim(),
+        confidence: 0.93,
+        confidenceLevel: CONFIDENCE_LEVEL.HIGH,
+        sourceType: "OCR_TEXT",
+      };
+    }
+  }
+
+  return {
+    field: "expiryOrBestBeforeDate",
+    value: { month: 0, year: 0, formattedText: "", declarationType: "BEST_BEFORE" },
     rawValue: "",
     confidence: 0,
     confidenceLevel: CONFIDENCE_LEVEL.LOW,
@@ -702,6 +752,7 @@ export function parseOCRRawText(rawText: string, contextProductName?: string): P
     manufacturerOrPacker: parseManufacturerOrPacker(text),
     netQuantity: parseNetQuantity(text),
     manufacturingOrPackingDate: parseManufacturingOrPackingDate(text),
+    expiryOrBestBeforeDate: parseExpiryOrBestBeforeDate(text),
     mrp: parseMRP(text),
     unitSalePrice: parseUnitSalePrice(text),
     consumerCare: parseConsumerCare(text),
