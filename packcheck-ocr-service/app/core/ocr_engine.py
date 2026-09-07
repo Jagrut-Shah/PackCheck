@@ -146,8 +146,20 @@ class OCRSpaceProvider:
             upload_scale_x = original_width / upload_image.shape[1]
             upload_scale_y = original_height / upload_image.shape[0]
 
-            logger.info("Starting OCR.space request.")
-            files = {"file": ("package.jpg", encoded_image.tobytes(), "image/jpeg")}
+            upload_bytes = encoded_image.tobytes()
+            logger.info(
+                "Starting OCR.space request.",
+                extra={
+                    "provider": self.engine_name,
+                    "engine": self.engine_version,
+                    "filename": "package.jpg",
+                    "content_type": "image/jpeg",
+                    "file_size_bytes": len(upload_bytes),
+                    "original_dimensions": [original_width, original_height],
+                    "upload_dimensions": [upload_image.shape[1], upload_image.shape[0]],
+                },
+            )
+            files = {"file": ("package.jpg", upload_bytes, "image/jpeg")}
             data = {
                 "apikey": settings.OCR_SPACE_API_KEY,
                 "language": "eng",
@@ -162,7 +174,10 @@ class OCRSpaceProvider:
             finally:
                 if self._client is None:
                     client.close()
-            logger.info(f"OCR.space response received with status {response.status_code}.")
+            logger.info(
+                "OCR.space response received.",
+                extra={"provider": self.engine_name, "http_status": response.status_code},
+            )
 
             if response.status_code in (401, 403):
                 raise OCRExecutionError(
@@ -190,6 +205,17 @@ class OCRSpaceProvider:
 
             if not isinstance(payload, dict):
                 raise OCRExecutionError(message="OCR.space returned an invalid response.", details={"provider": "ocr_space"})
+            parsed_results = payload.get("ParsedResults")
+            parsed_results_count = len(parsed_results) if isinstance(parsed_results, list) else 0
+            logger.info(
+                "OCR.space response parsed.",
+                extra={
+                    "provider": self.engine_name,
+                    "is_errored_on_processing": bool(payload.get("IsErroredOnProcessing")),
+                    "error_message_present": bool(payload.get("ErrorMessage") or payload.get("ErrorDetails")),
+                    "parsed_results_count": parsed_results_count,
+                },
+            )
             if payload.get("IsErroredOnProcessing"):
                 error_message = payload.get("ErrorMessage") or payload.get("ErrorDetails") or "OCR.space processing failed."
                 if isinstance(error_message, list):
@@ -199,7 +225,6 @@ class OCRSpaceProvider:
                     details={"provider": "ocr_space"},
                 )
 
-            parsed_results = payload.get("ParsedResults")
             if not isinstance(parsed_results, list):
                 raise OCRExecutionError(message="OCR.space response did not contain ParsedResults.", details={"provider": "ocr_space"})
 
@@ -219,6 +244,16 @@ class OCRSpaceProvider:
                             detections.append(detection)
 
             raw_text = "\n".join(raw_text_parts).strip()
+            text_preview = " ".join(raw_text.split())[:500]
+            logger.info(
+                "OCR.space text extraction result.",
+                extra={
+                    "provider": self.engine_name,
+                    "parsed_text_length": len(raw_text),
+                    "detection_count": len(detections),
+                    "parsed_text_preview": text_preview if settings.DEBUG else "<debug disabled>",
+                },
+            )
             if not raw_text:
                 raise OCRExecutionError(message="OCR.space returned no readable text.", details={"provider": "ocr_space"})
             if not detections:
